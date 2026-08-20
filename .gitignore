@@ -4,3 +4,7 @@ __pycache__/
 *.pyc
 data/uploads/
 data/processed/
+.venv/
+__pycache__/
+*.pyc
+data/
