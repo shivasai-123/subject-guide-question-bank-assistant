@@ -6,7 +6,7 @@ First Normal Form (1NF) requires atomic values.
 
 Second Normal Form (2NF) removes partial dependency.
 
-Third Normal Form (3NF) removes transitive dependency.
+Third Normal Form (3NF) removes transitive dependency. hello
 """
 
 print(text)
