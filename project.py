@@ -1,3 +1,4 @@
+import ollama
 import faiss
 import pymupdf
 from sentence_transformers import SentenceTransformer
@@ -88,7 +89,7 @@ print("Number of vectors in index:", index.ntotal)
 # 6. RETRIEVAL FUNCTION
 # -----------------------------
 
-def retrieve(query, k=3):
+def retrieve(query, k=5):
 
     # Convert the question into an embedding
     query_embedding = model.encode([query])
@@ -108,29 +109,8 @@ def retrieve(query, k=3):
 
     return results
 
-
 # -----------------------------
-# 7. TEST RETRIEVAL
-# -----------------------------
-
-query = "What is minimum support?"
-
-results = retrieve(query)
-
-print("\nQuery:", query)
-
-print("\nRetrieved results:")
-
-for rank, result in enumerate(results, start=1):
-
-    print(f"\n--- Result {rank} ---")
-    print("Chunk index:", result["index"])
-    print("Distance:", result["distance"])
-    print("Text:")
-    print(result["chunk"])
-
-# -----------------------------
-# 8. BUILD CONTEXT
+# 7. BUILD CONTEXT
 # -----------------------------
 
 def build_context(results):
@@ -142,13 +122,30 @@ def build_context(results):
 
     return context
 
+
 # -----------------------------
-# 9. TEST CONTEXT
+# 8. ASK USER QUESTION
 # -----------------------------
 
-query = "What is minimum support?"
+query = input("\nEnter your question: ")
 
+# Retrieve relevant chunks
 results = retrieve(query)
+
+print("\nRetrieved results:")
+
+for rank, result in enumerate(results, start=1):
+
+    print(f"\n--- Result {rank} ---")
+    print("Chunk index:", result["index"])
+    print("Distance:", result["distance"])
+    print("Text:")
+    print(result["chunk"])
+
+
+# -----------------------------
+# 9. BUILD RETRIEVED CONTEXT
+# -----------------------------
 
 context = build_context(results)
 
@@ -163,3 +160,58 @@ print("RETRIEVED CONTEXT")
 print("==============================")
 
 print(context)
+
+# -----------------------------
+# 10. GENERATE ANSWER
+# -----------------------------
+
+query = input("\nEnter your question: ")
+
+results = retrieve(query, k=5)
+
+context = build_context(results)
+
+prompt = f"""
+You are a study assistant answering questions from an uploaded document.
+
+Use ONLY the information provided in the CONTEXT.
+
+You may combine information from multiple parts of the context to form the answer.
+
+Answer the question clearly and directly.
+
+Do not say that the answer is missing if the context contains related information
+that can be combined to answer the question.
+
+Do not use outside knowledge.
+
+If the context genuinely does not contain enough information to answer the question,
+say exactly:
+"I could not find the answer in the uploaded document."
+
+CONTEXT:
+{context}
+
+QUESTION:
+{query}
+
+ANSWER:
+"""
+
+response = ollama.chat(
+    model="llama3.2:3b",
+    messages=[
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ]
+)
+
+answer = response["message"]["content"]
+
+print("\n==============================")
+print("FINAL ANSWER")
+print("==============================")
+
+print(answer)
