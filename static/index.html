@@ -1,398 +1,286 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
-
-    <title>
-        Subject Guide AI Assistant
-    </title>
+    <title>Subject Guide AI Assistant</title>
 
     <style>
-
-        * {
-            box-sizing: border-box;
-        }
-
         body {
-
-            margin: 0;
-
             font-family: Arial, sans-serif;
-
-            background: #f4f6f8;
-
-            min-height: 100vh;
-
-        }
-
-        .container {
-
-            width: 90%;
-
             max-width: 900px;
-
-            margin: 50px auto;
-
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f7fb;
         }
 
-        .header {
-
-            background: #1f2937;
-
-            color: white;
-
-            padding: 30px;
-
-            border-radius: 15px;
-
+        h1 {
             text-align: center;
-
-        }
-
-        .header h1 {
-
-            margin: 0;
-
-            font-size: 30px;
-
-        }
-
-        .header p {
-
-            margin-top: 10px;
-
-            color: #d1d5db;
-
         }
 
         .card {
-
             background: white;
-
-            margin-top: 25px;
-
-            padding: 25px;
-
-            border-radius: 15px;
-
-            box-shadow:
-                0 5px 20px
-                rgba(0,0,0,0.08);
-
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }
 
-        textarea {
-
+        input,
+        textarea,
+        select,
+        button {
             width: 100%;
-
-            height: 120px;
-
-            padding: 15px;
-
-            font-size: 16px;
-
+            box-sizing: border-box;
+            padding: 10px;
+            margin-top: 8px;
+            margin-bottom: 12px;
+            border-radius: 6px;
             border: 1px solid #ccc;
-
-            border-radius: 10px;
-
-            resize: vertical;
-
         }
 
         button {
-
-            margin-top: 15px;
-
-            width: 100%;
-
-            padding: 14px;
-
-            font-size: 17px;
-
-            border: none;
-
-            border-radius: 10px;
-
-            background: #2563eb;
-
-            color: white;
-
             cursor: pointer;
-
+            font-weight: bold;
         }
 
-        button:hover {
-
-            background: #1d4ed8;
-
-        }
-
-        #loading {
-
-            display: none;
-
-            margin-top: 20px;
-
-            text-align: center;
-
-        }
-
-        #answerBox {
-
-            display: none;
-
-            margin-top: 25px;
-
-        }
-
-        .answer {
-
-            background: #f0fdf4;
-
-            border-left: 5px solid #22c55e;
-
-            padding: 20px;
-
-            border-radius: 8px;
-
+        #answer {
+            white-space: pre-wrap;
             line-height: 1.6;
-
         }
 
-        .sources {
-
-            margin-top: 20px;
-
-            background: #f9fafb;
-
-            padding: 15px;
-
-            border-radius: 10px;
-
-        }
-
-        .source {
-
-            padding: 10px;
-
-            margin-top: 10px;
-
-            background: white;
-
-            border: 1px solid #ddd;
-
-            border-radius: 8px;
-
+        #sources {
+            white-space: pre-wrap;
             font-size: 14px;
-
         }
 
+        .hidden {
+            display: none;
+        }
+
+        .status {
+            margin-top: 10px;
+            font-weight: bold;
+        }
     </style>
-
 </head>
-
 
 <body>
 
-<div class="container">
+    <h1>📚 Subject Guide AI Assistant</h1>
 
+    <!-- Document Upload -->
+    <div class="card">
+        <h2>📄 Upload Study Material</h2>
 
-    <div class="header">
+        <label>Select PDF:</label>
+        <input type="file" id="fileInput" accept=".pdf">
 
-        <h1>
-            📚 Subject Guide AI Assistant
-        </h1>
+        <label>Subject:</label>
+        <input
+            type="text"
+            id="subjectInput"
+            placeholder="Example: C-Programming"
+        >
 
-        <p>
-            Ask questions from your study material
-        </p>
+        <label>Chapter:</label>
+        <input
+            type="text"
+            id="chapterInput"
+            placeholder="Example: Functions"
+        >
 
+        <button onclick="uploadDocument()">
+            Upload Document
+        </button>
+
+        <div id="uploadStatus" class="status"></div>
     </div>
 
-
+    <!-- Ask Question -->
     <div class="card">
+        <h2>❓ Ask a Question</h2>
 
         <textarea
             id="question"
-            placeholder="Ask your question here...">
-        </textarea>
+            rows="5"
+            placeholder="Example: What is a function in C?"
+        ></textarea>
 
         <button onclick="askQuestion()">
-
             Ask Question
-
         </button>
-
-
-        <div id="loading">
-
-            🤖 AI is thinking...
-
-        </div>
-
-
-        <div id="answerBox">
-
-            <h2>
-                Answer
-            </h2>
-
-            <div
-                id="answer"
-                class="answer">
-            </div>
-
-
-            <div class="sources">
-
-                <h3>
-                    Retrieved Sources
-                </h3>
-
-                <div id="sources">
-                </div>
-
-            </div>
-
-        </div>
-
     </div>
 
-</div>
+    <!-- Answer -->
+    <div class="card">
+        <h2>💡 Answer</h2>
 
+        <div id="loading" class="hidden">
+            Generating answer...
+        </div>
+
+        <div id="answer">
+            Your answer will appear here.
+        </div>
+    </div>
+
+    <!-- Sources -->
+    <div class="card">
+        <h2>📚 Retrieved Sources</h2>
+
+        <div id="sources">
+            Sources will appear here.
+        </div>
+    </div>
 
 <script>
+
+async function uploadDocument() {
+
+    const fileInput = document.getElementById("fileInput");
+    const subject = document.getElementById("subjectInput").value.trim();
+    const chapter = document.getElementById("chapterInput").value.trim();
+    const status = document.getElementById("uploadStatus");
+
+    if (!fileInput.files.length) {
+        status.textContent = "Please select a PDF.";
+        return;
+    }
+
+    if (!subject) {
+        status.textContent = "Please enter a subject.";
+        return;
+    }
+
+    if (!chapter) {
+        status.textContent = "Please enter a chapter.";
+        return;
+    }
+
+    const formData = new FormData();
+
+    formData.append("file", fileInput.files[0]);
+    formData.append("subject", subject);
+    formData.append("chapter", chapter);
+
+    status.textContent = "Uploading...";
+
+    try {
+
+        const response = await fetch("/upload", {
+            method: "POST",
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            status.textContent =
+                data.detail || "Upload failed.";
+            return;
+        }
+
+        status.textContent =
+            "✅ Uploaded successfully: " +
+            data.filename +
+            " | Subject: " +
+            data.subject +
+            " | Chapter: " +
+            data.chapter +
+            " | Chunks: " +
+            data.chunks_added;
+
+    } catch (error) {
+
+        status.textContent =
+            "❌ Error connecting to server.";
+
+        console.error(error);
+    }
+}
+
 
 async function askQuestion() {
 
     const question =
-        document
-        .getElementById("question")
-        .value
-        .trim();
+        document.getElementById("question").value.trim();
 
+    const answer =
+        document.getElementById("answer");
+
+    const sources =
+        document.getElementById("sources");
+
+    const loading =
+        document.getElementById("loading");
 
     if (!question) {
-
-        alert(
-            "Please enter a question."
-        );
-
+        answer.textContent = "Please enter a question.";
         return;
-
     }
 
+    loading.classList.remove("hidden");
 
-    document
-        .getElementById("loading")
-        .style.display = "block";
-
-
-    document
-        .getElementById("answerBox")
-        .style.display = "none";
-
+    answer.textContent = "";
+    sources.textContent = "";
 
     try {
 
-        const response =
-            await fetch(
-                "/ask",
-                {
+        const response = await fetch("/ask", {
 
-                    method: "POST",
+            method: "POST",
 
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
+            headers: {
+                "Content-Type": "application/json"
+            },
 
-                    body: JSON.stringify({
-                        question: question
-                    })
+            body: JSON.stringify({
+                question: question
+            })
+        });
 
-                }
-            );
+        const data = await response.json();
 
+        if (!response.ok) {
 
-        const data =
-            await response.json();
+            answer.textContent =
+                data.detail || "Something went wrong.";
 
+            return;
+        }
 
-        document
-            .getElementById("answer")
-            .innerText =
+        answer.textContent =
             data.answer;
 
+        sources.textContent =
+            data.sources
+                .map(
+                    source =>
+                        `File: ${source.metadata.filename}
+Subject: ${source.metadata.subject}
+Chapter: ${source.metadata.chapter}
+Distance: ${source.distance.toFixed(4)}
 
-        const sources =
-            document
-            .getElementById("sources");
+${source.text}`
+                )
+                .join("\n\n-------------------------\n\n");
 
+    } catch (error) {
 
-        sources.innerHTML = "";
+        answer.textContent =
+            "❌ Unable to connect to the server.";
 
+        console.error(error);
 
-        data.sources.forEach(
-            (source, index) => {
+    } finally {
 
-                const div =
-                    document.createElement(
-                        "div"
-                    );
-
-                div.className =
-                    "source";
-
-                div.innerText =
-                    "Source " +
-                    (index + 1) +
-                    ": " +
-                    source;
-
-                sources.appendChild(
-                    div
-                );
-
-            }
-        );
-
-
-        document
-            .getElementById("answerBox")
-            .style.display = "block";
-
-
+        loading.classList.add("hidden");
     }
-
-    catch (error) {
-
-        document
-            .getElementById("answer")
-            .innerText =
-            "Error connecting to the server.";
-
-        document
-            .getElementById("answerBox")
-            .style.display = "block";
-
-    }
-
-
-    document
-        .getElementById("loading")
-        .style.display = "none";
-
 }
 
 </script>
 
-
 </body>
-
 </html>

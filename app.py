@@ -1,11 +1,14 @@
+import os
+import shutil
 import ollama
-import faiss
-import pymupdf
-from sentence_transformers import SentenceTransformer
-from fastapi import FastAPI
+
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-import re
+
+from document_processor import process_pdf
+from rag_engine import RAGEngine
+from learning_tools import LearningTools
 
 
 # ==========================================
@@ -13,144 +16,82 @@ import re
 # ==========================================
 
 app = FastAPI(
-    title="Subject Guide Question Bank Assistant",
-    description="RAG based AI Question Answering System",
-    version="1.0"
+    title="Subject Guide & Question Bank AI Assistant",
+    description="Multi-document RAG academic learning assistant",
+    version="3.0"
 )
 
 
 # ==========================================
-# 2. LOAD PDF
+# 2. INITIALIZE ENGINES
 # ==========================================
 
-pdf_path = "data/seminar9.pdf"
+rag = RAGEngine()
 
-doc = pymupdf.open(pdf_path)
-
-full_text = ""
-
-for page in doc:
-    full_text += page.get_text() + "\n"
-
-doc.close()
-
-
-# ==========================================
-# 3. TEXT CHUNKING
-# ==========================================
-
-sentences = re.split(
-    r'(?<=[.!?])\s+',
-    full_text.strip()
-)
-
-chunk_size = 3
-overlap = 1
-
-chunks = []
-
-start = 0
-
-while start < len(sentences):
-
-    end = start + chunk_size
-
-    chunk = " ".join(
-        sentences[start:end]
-    ).strip()
-
-    if chunk:
-        chunks.append(chunk)
-
-    start += chunk_size - overlap
-
-
-print("Total chunks:", len(chunks))
-
-
-# ==========================================
-# 4. CREATE EMBEDDINGS
-# ==========================================
-
-print("Loading embedding model...")
-
-model = SentenceTransformer(
-    "all-MiniLM-L6-v2"
-)
-
-embeddings = model.encode(chunks)
-
-print("Embeddings created!")
-
-
-# ==========================================
-# 5. CREATE FAISS INDEX
-# ==========================================
-
-dimension = embeddings.shape[1]
-
-index = faiss.IndexFlatL2(dimension)
-
-index.add(embeddings)
-
-print("FAISS index created!")
-
-print(
-    "Number of vectors:",
-    index.ntotal
+learning = LearningTools(
+    model="llama3.2:3b"
 )
 
 
 # ==========================================
-# 6. RETRIEVAL FUNCTION
+# 3. DOCUMENT STORAGE
 # ==========================================
 
-def retrieve(query, k=5):
+DATA_FOLDER = "data"
 
-    query_embedding = model.encode(
-        [query]
-    )
+os.makedirs(
+    DATA_FOLDER,
+    exist_ok=True
+)
 
-    distances, indices = index.search(
-        query_embedding,
-        k
-    )
 
-    results = []
+# ==========================================
+# 4. LOAD EXISTING PDFS
+# ==========================================
 
-    for distance, idx in zip(
-        distances[0],
-        indices[0]
-    ):
+def load_existing_documents():
 
-        if idx < 0:
-            continue
+    pdf_files = [
+        file
+        for file in os.listdir(DATA_FOLDER)
+        if file.lower().endswith(".pdf")
+    ]
 
-        results.append(
-            chunks[idx]
+    for filename in pdf_files:
+
+        file_path = os.path.join(
+            DATA_FOLDER,
+            filename
         )
 
-    return results
+        try:
+
+            documents = process_pdf(
+                file_path=file_path,
+                subject="General",
+                chapter="General"
+            )
+
+            rag.add_documents(
+                documents
+            )
+
+            print(
+                f"Loaded: {filename}"
+            )
+
+        except Exception as e:
+
+            print(
+                f"Could not load {filename}: {e}"
+            )
+
+
+load_existing_documents()
 
 
 # ==========================================
-# 7. BUILD CONTEXT
-# ==========================================
-
-def build_context(results):
-
-    context = ""
-
-    for result in results:
-
-        context += result
-        context += "\n\n"
-
-    return context
-
-
-# ==========================================
-# 8. QUESTION MODEL
+# 5. REQUEST MODELS
 # ==========================================
 
 class Question(BaseModel):
@@ -158,64 +99,119 @@ class Question(BaseModel):
     question: str
 
 
+class TopicRequest(BaseModel):
+
+    topic: str
+
+
 # ==========================================
-# 9. API ENDPOINT
+# 6. HOME PAGE
+# ==========================================
+
+@app.get("/")
+def home():
+
+    return FileResponse(
+        "static/index.html"
+    )
+
+
+# ==========================================
+# 7. HEALTH CHECK
+# ==========================================
+
+@app.get("/health")
+def health():
+
+    return {
+        "status": "running",
+        "documents": rag.get_document_count(),
+        "vectors": rag.get_vector_count(),
+        "subjects": rag.get_subjects(),
+        "model": learning.model
+    }
+
+
+# ==========================================
+# 8. UPLOAD PDF
+# ==========================================
+
+@app.post("/upload")
+async def upload_document(
+    file: UploadFile = File(...),
+    subject: str = Form("General"),
+    chapter: str = Form("General")
+):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF files are supported currently."
+        )
+
+    file_path = os.path.join(DATA_FOLDER, file.filename)
+
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        documents = process_pdf(
+            file_path=file_path,
+            subject=subject,
+            chapter=chapter
+        )
+
+        rag.add_documents(documents)
+
+        return {
+            "message": "Document uploaded successfully",
+            "filename": file.filename,
+            "subject": subject,
+            "chapter": chapter,
+            "chunks_added": len(documents),
+            "total_documents": rag.get_document_count(),
+            "total_vectors": rag.get_vector_count()
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# 9. ASK QUESTION
 # ==========================================
 
 @app.post("/ask")
 def ask_question(data: Question):
 
-    query = data.question
+    query = data.question.strip()
 
-    results = retrieve(
+
+    if not query:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Question cannot be empty."
+        )
+
+
+    results = rag.retrieve(
         query,
         k=5
     )
 
-    context = build_context(
+
+    context = rag.build_context(
         results
     )
 
-    prompt = f"""
-You are a helpful academic assistant.
 
-Answer the student's question using the
-provided document context.
-
-Use ONLY the information available in the
-context.
-
-If the answer is not available in the
-context, say:
-
-"I could not find the answer in the uploaded document."
-
-Give a clear and simple answer.
-
-Context:
-{context}
-
-Question:
-{query}
-
-Answer:
-"""
-
-    response = ollama.chat(
-        model="llama3.2:3b",
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
+    answer = learning.solve_question(
+        query,
+        context
     )
 
-    answer = response[
-        "message"
-    ][
-        "content"
-    ]
 
     return {
         "question": query,
@@ -225,12 +221,165 @@ Answer:
 
 
 # ==========================================
-# 10. HOME PAGE
+# 10. TOPIC EXPLANATION
 # ==========================================
 
-@app.get("/")
-def home():
+@app.post("/explain")
+def explain_topic(data: TopicRequest):
 
-    return FileResponse(
-        "static/index.html"
+    topic = data.topic.strip()
+
+
+    if not topic:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Topic cannot be empty."
+        )
+
+
+    results = rag.retrieve(
+        topic,
+        k=5
     )
+
+
+    context = rag.build_context(
+        results
+    )
+
+
+    answer = learning.explain_topic(
+        topic,
+        context
+    )
+
+
+    return {
+        "topic": topic,
+        "answer": answer,
+        "sources": results
+    }
+
+
+# ==========================================
+# 11. CONTENT SYNTHESIS
+# ==========================================
+
+@app.post("/synthesize")
+def synthesize_content(data: TopicRequest):
+
+    topic = data.topic.strip()
+
+
+    if not topic:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Topic cannot be empty."
+        )
+
+
+    results = rag.retrieve(
+        topic,
+        k=5
+    )
+
+
+    context = rag.build_context(
+        results
+    )
+
+
+    answer = learning.synthesize_content(
+        topic,
+        context
+    )
+
+
+    return {
+        "topic": topic,
+        "answer": answer,
+        "sources": results
+    }
+
+
+# ==========================================
+# 12. LEARNING PROGRESSION
+# ==========================================
+
+@app.post("/progression")
+def progression(data: TopicRequest):
+
+    topic = data.topic.strip()
+
+
+    if not topic:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Topic cannot be empty."
+        )
+
+
+    results = rag.retrieve(
+        topic,
+        k=5
+    )
+
+
+    context = rag.build_context(
+        results
+    )
+
+
+    answer = learning.learning_progression(
+        topic,
+        context
+    )
+
+
+    return {
+        "topic": topic,
+        "answer": answer,
+        "sources": results
+    }
+
+
+# ==========================================
+# 13. LEARNING HISTORY
+# ==========================================
+
+@app.get("/history")
+def get_history():
+
+    return {
+        "history": learning.get_history()
+    }
+
+
+# ==========================================
+# 14. SUBJECTS
+# ==========================================
+
+@app.get("/subjects")
+def get_subjects():
+
+    return {
+        "subjects": rag.get_subjects()
+    }
+
+
+# ==========================================
+# 15. CHAPTERS
+# ==========================================
+
+@app.get("/chapters")
+def get_chapters(subject: str | None = None):
+
+    return {
+        "subject": subject,
+        "chapters": rag.get_chapters(
+            subject
+        )
+    }
