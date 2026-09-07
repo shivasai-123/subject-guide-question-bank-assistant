@@ -1,12 +1,12 @@
 import faiss
 import numpy as np
+import re
 from sentence_transformers import SentenceTransformer
 
 
 class RAGEngine:
 
     def __init__(self):
-
         print("Loading embedding model...")
 
         self.model = SentenceTransformer(
@@ -19,37 +19,23 @@ class RAGEngine:
 
 
     # ==========================================
-    # 1. ADD MULTIPLE DOCUMENTS
+    # ADD DOCUMENTS
     # ==========================================
 
     def add_documents(self, documents):
 
-        """
-        Add processed documents to the RAG system.
-
-        Each document should contain:
-
-        {
-            "text": "...",
-            "metadata": {
-                "filename": "...",
-                "subject": "...",
-                "chapter": "..."
-            }
-        }
-        """
-
         if not documents:
             return
 
-
-        self.documents.extend(documents)
+        self.documents.extend(
+            documents
+        )
 
         self._rebuild_index()
 
 
     # ==========================================
-    # 2. BUILD / REBUILD FAISS INDEX
+    # BUILD FAISS INDEX
     # ==========================================
 
     def _rebuild_index(self):
@@ -57,37 +43,29 @@ class RAGEngine:
         if not self.documents:
             return
 
-
         texts = [
             document["text"]
             for document in self.documents
         ]
-
 
         self.embeddings = self.model.encode(
             texts,
             convert_to_numpy=True
         )
 
-
-        # FAISS works with float32
         self.embeddings = self.embeddings.astype(
             "float32"
         )
 
-
         dimension = self.embeddings.shape[1]
-
 
         self.index = faiss.IndexFlatL2(
             dimension
         )
 
-
         self.index.add(
             self.embeddings
         )
-
 
         print(
             "FAISS index updated:",
@@ -97,10 +75,16 @@ class RAGEngine:
 
 
     # ==========================================
-    # 3. RETRIEVE RELEVANT DOCUMENTS
+    # RETRIEVE DOCUMENTS
     # ==========================================
 
-    def retrieve(self, query, k=5):
+    def retrieve(
+        self,
+        query,
+        k=5,
+        subject=None,
+        chapter=None
+    ):
 
         if self.index is None:
             return []
@@ -111,55 +95,128 @@ class RAGEngine:
             convert_to_numpy=True
         )
 
-
         query_embedding = query_embedding.astype(
             "float32"
         )
 
 
-        k = min(
-            k,
-            len(self.documents)
+        # --------------------------------------
+        # Find matching documents
+        # --------------------------------------
+
+        candidate_indices = []
+
+        for i, document in enumerate(
+            self.documents
+        ):
+
+            metadata = document["metadata"]
+
+
+            if subject is not None:
+
+                if metadata.get(
+                    "subject"
+                ) != subject:
+
+                    continue
+
+
+            if chapter is not None:
+
+                if metadata.get(
+                    "chapter"
+                ) != chapter:
+
+                    continue
+
+
+            candidate_indices.append(i)
+
+
+        if not candidate_indices:
+            return []
+
+
+        # --------------------------------------
+        # Create filtered FAISS index
+        # --------------------------------------
+
+        candidate_embeddings = (
+            self.embeddings[
+                candidate_indices
+            ]
         )
 
 
-        distances, indices = self.index.search(
-            query_embedding,
-            k
+        filtered_index = faiss.IndexFlatL2(
+            candidate_embeddings.shape[1]
+        )
+
+
+        filtered_index.add(
+            candidate_embeddings
+        )
+
+
+        k = min(
+            k,
+            len(candidate_indices)
+        )
+
+
+        distances, indices = (
+            filtered_index.search(
+                query_embedding,
+                k
+            )
         )
 
 
         results = []
 
 
-        for distance, idx in zip(
+        for distance, filtered_idx in zip(
             distances[0],
             indices[0]
         ):
 
-            if idx < 0:
+            if filtered_idx < 0:
                 continue
 
 
-            document = self.documents[idx]
+            original_idx = (
+                candidate_indices[
+                    filtered_idx
+                ]
+            )
 
 
-            results.append({
+            document = self.documents[
+                original_idx
+            ]
 
-                "text": document["text"],
 
-                "distance": float(distance),
+            results.append(
+                {
+                    "text": document["text"],
 
-                "metadata": document["metadata"]
+                    "distance": float(
+                        distance
+                    ),
 
-            })
+                    "metadata": document[
+                        "metadata"
+                    ]
+                }
+            )
 
 
         return results
 
 
     # ==========================================
-    # 4. BUILD CONTEXT
+    # BUILD CONTEXT
     # ==========================================
 
     def build_context(self, results):
@@ -169,7 +226,9 @@ class RAGEngine:
 
         for result in results:
 
-            metadata = result["metadata"]
+            metadata = result[
+                "metadata"
+            ]
 
 
             context_parts.append(
@@ -190,7 +249,7 @@ Content:
 
 
     # ==========================================
-    # 5. GET DOCUMENT COUNT
+    # DOCUMENT COUNT
     # ==========================================
 
     def get_document_count(self):
@@ -201,7 +260,7 @@ Content:
 
 
     # ==========================================
-    # 6. GET VECTOR COUNT
+    # VECTOR COUNT
     # ==========================================
 
     def get_vector_count(self):
@@ -213,7 +272,7 @@ Content:
 
 
     # ==========================================
-    # 7. GET AVAILABLE SUBJECTS
+    # GET SUBJECTS
     # ==========================================
 
     def get_subjects(self):
@@ -223,47 +282,94 @@ Content:
 
         for document in self.documents:
 
-            subject = document["metadata"].get(
+            subject = document[
+                "metadata"
+            ].get(
                 "subject",
                 "General"
             )
 
-            subjects.add(subject)
+
+            subjects.add(
+                subject
+            )
 
 
         return sorted(
-            subjects
+            subjects,
+            key=lambda x: x.lower()
         )
 
 
     # ==========================================
-    # 8. GET AVAILABLE CHAPTERS
+    # GET CHAPTERS
     # ==========================================
 
-    def get_chapters(self, subject=None):
+    def get_chapters(
+        self,
+        subject=None
+    ):
 
         chapters = set()
 
 
         for document in self.documents:
 
-            metadata = document["metadata"]
+            metadata = document[
+                "metadata"
+            ]
 
 
             if subject is not None:
 
-                if metadata.get("subject") != subject:
+                if metadata.get(
+                    "subject"
+                ) != subject:
+
                     continue
 
 
+            chapter = metadata.get(
+                "chapter",
+                "General"
+            )
+
+
             chapters.add(
-                metadata.get(
-                    "chapter",
-                    "General"
+                chapter
+            )
+
+
+        # --------------------------------------
+        # Numeric chapter sorting
+        # --------------------------------------
+
+        def chapter_sort_key(chapter):
+
+            match = re.search(
+                r"(?:Chapter\s*)?(\d+)",
+                chapter,
+                re.IGNORECASE
+            )
+
+
+            if match:
+
+                return (
+                    0,
+                    int(match.group(1)),
+                    chapter.lower()
                 )
+
+
+            return (
+                1,
+                999999,
+                chapter.lower()
             )
 
 
         return sorted(
-            chapters
+            chapters,
+            key=chapter_sort_key
         )

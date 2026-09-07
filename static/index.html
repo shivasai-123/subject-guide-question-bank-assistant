@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <title>Subject Guide AI Assistant</title>
 
     <style>
+
         body {
             font-family: Arial, sans-serif;
             max-width: 900px;
@@ -45,6 +47,15 @@
             font-weight: bold;
         }
 
+        button:hover {
+            background: #eeeeee;
+        }
+
+        select:disabled {
+            background: #eeeeee;
+            cursor: not-allowed;
+        }
+
         #answer {
             white-space: pre-wrap;
             line-height: 1.6;
@@ -53,6 +64,7 @@
         #sources {
             white-space: pre-wrap;
             font-size: 14px;
+            line-height: 1.5;
         }
 
         .hidden {
@@ -63,124 +75,433 @@
             margin-top: 10px;
             font-weight: bold;
         }
+
     </style>
+
 </head>
+
 
 <body>
 
     <h1>📚 Subject Guide AI Assistant</h1>
 
-    <!-- Document Upload -->
+
+    <!-- ========================================== -->
+    <!-- DOCUMENT UPLOAD -->
+    <!-- ========================================== -->
+
     <div class="card">
+
         <h2>📄 Upload Study Material</h2>
 
         <label>Select PDF:</label>
-        <input type="file" id="fileInput" accept=".pdf">
+
+        <input
+            type="file"
+            id="fileInput"
+            accept=".pdf"
+        >
+
 
         <label>Subject:</label>
+
         <input
             type="text"
             id="subjectInput"
-            placeholder="Example: C-Programming"
+            placeholder="Example: Python"
         >
 
+
         <label>Chapter:</label>
+
         <input
             type="text"
             id="chapterInput"
             placeholder="Example: Functions"
         >
 
+
         <button onclick="uploadDocument()">
             Upload Document
         </button>
 
-        <div id="uploadStatus" class="status"></div>
+
+        <div
+            id="uploadStatus"
+            class="status"
+        ></div>
+
     </div>
 
-    <!-- Ask Question -->
+
+    <!-- ========================================== -->
+    <!-- ASK QUESTION -->
+    <!-- ========================================== -->
+
     <div class="card">
+
         <h2>❓ Ask a Question</h2>
+
+
+        <label>Subject:</label>
+
+        <select
+            id="questionSubject"
+            onchange="loadChapters()"
+        >
+
+            <option value="">
+                All Subjects
+            </option>
+
+        </select>
+
+
+        <label>Chapter:</label>
+
+        <select
+            id="questionChapter"
+            disabled
+        >
+
+            <option value="">
+                All Chapters
+            </option>
+
+        </select>
+
+
+        <label>Question:</label>
 
         <textarea
             id="question"
             rows="5"
-            placeholder="Example: What is a function in C?"
+            placeholder="Example: What is Python?"
         ></textarea>
+
 
         <button onclick="askQuestion()">
             Ask Question
         </button>
+
     </div>
 
-    <!-- Answer -->
+
+    <!-- ========================================== -->
+    <!-- ANSWER -->
+    <!-- ========================================== -->
+
     <div class="card">
+
         <h2>💡 Answer</h2>
 
-        <div id="loading" class="hidden">
+
+        <div
+            id="loading"
+            class="hidden"
+        >
             Generating answer...
         </div>
+
 
         <div id="answer">
             Your answer will appear here.
         </div>
+
     </div>
 
-    <!-- Sources -->
+
+    <!-- ========================================== -->
+    <!-- RETRIEVED SOURCES -->
+    <!-- ========================================== -->
+
     <div class="card">
+
         <h2>📚 Retrieved Sources</h2>
+
 
         <div id="sources">
             Sources will appear here.
         </div>
+
     </div>
+
+
 
 <script>
 
-async function uploadDocument() {
 
-    const fileInput = document.getElementById("fileInput");
-    const subject = document.getElementById("subjectInput").value.trim();
-    const chapter = document.getElementById("chapterInput").value.trim();
-    const status = document.getElementById("uploadStatus");
+// ==========================================
+// LOAD SUBJECTS
+// ==========================================
 
-    if (!fileInput.files.length) {
-        status.textContent = "Please select a PDF.";
-        return;
-    }
-
-    if (!subject) {
-        status.textContent = "Please enter a subject.";
-        return;
-    }
-
-    if (!chapter) {
-        status.textContent = "Please enter a chapter.";
-        return;
-    }
-
-    const formData = new FormData();
-
-    formData.append("file", fileInput.files[0]);
-    formData.append("subject", subject);
-    formData.append("chapter", chapter);
-
-    status.textContent = "Uploading...";
+async function loadSubjects() {
 
     try {
 
-        const response = await fetch("/upload", {
-            method: "POST",
-            body: formData
+        const response =
+            await fetch("/subjects");
+
+        const data =
+            await response.json();
+
+
+        const subjectSelect =
+            document.getElementById(
+                "questionSubject"
+            );
+
+
+        subjectSelect.innerHTML = `
+            <option value="">
+                All Subjects
+            </option>
+        `;
+
+
+        data.subjects.forEach(subject => {
+
+            const option =
+                document.createElement("option");
+
+            option.value = subject;
+            option.textContent = subject;
+
+            subjectSelect.appendChild(
+                option
+            );
+
         });
 
-        const data = await response.json();
+    }
+
+    catch (error) {
+
+        console.error(
+            "Could not load subjects:",
+            error
+        );
+
+    }
+
+}
+
+
+// ==========================================
+// LOAD CHAPTERS
+// ==========================================
+
+async function loadChapters() {
+
+    const subject =
+        document.getElementById(
+            "questionSubject"
+        ).value;
+
+
+    const chapterSelect =
+        document.getElementById(
+            "questionChapter"
+        );
+
+
+    // --------------------------------------
+    // ALL SUBJECTS
+    // --------------------------------------
+
+    if (!subject) {
+
+        chapterSelect.innerHTML = `
+            <option value="">
+                All Chapters
+            </option>
+        `;
+
+        chapterSelect.disabled = true;
+
+        return;
+    }
+
+
+    // --------------------------------------
+    // SUBJECT SELECTED
+    // --------------------------------------
+
+    chapterSelect.disabled = false;
+
+
+    chapterSelect.innerHTML = `
+        <option value="">
+            Loading chapters...
+        </option>
+    `;
+
+
+    try {
+
+        const url =
+            "/chapters?subject=" +
+            encodeURIComponent(subject);
+
+
+        const response =
+            await fetch(url);
+
+
+        const data =
+            await response.json();
+
+
+        chapterSelect.innerHTML = `
+            <option value="">
+                All Chapters
+            </option>
+        `;
+
+
+        data.chapters.forEach(chapter => {
+
+            const option =
+                document.createElement("option");
+
+            option.value = chapter;
+            option.textContent = chapter;
+
+            chapterSelect.appendChild(
+                option
+            );
+
+        });
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Could not load chapters:",
+            error
+        );
+
+
+        chapterSelect.innerHTML = `
+            <option value="">
+                Could not load chapters
+            </option>
+        `;
+
+    }
+
+}
+
+
+// ==========================================
+// UPLOAD DOCUMENT
+// ==========================================
+
+async function uploadDocument() {
+
+    const fileInput =
+        document.getElementById(
+            "fileInput"
+        );
+
+
+    const subject =
+        document.getElementById(
+            "subjectInput"
+        ).value.trim();
+
+
+    const chapter =
+        document.getElementById(
+            "chapterInput"
+        ).value.trim();
+
+
+    const status =
+        document.getElementById(
+            "uploadStatus"
+        );
+
+
+    if (!fileInput.files.length) {
+
+        status.textContent =
+            "Please select a PDF.";
+
+        return;
+    }
+
+
+    if (!subject) {
+
+        status.textContent =
+            "Please enter a subject.";
+
+        return;
+    }
+
+
+    if (!chapter) {
+
+        status.textContent =
+            "Please enter a chapter.";
+
+        return;
+    }
+
+
+    const formData =
+        new FormData();
+
+
+    formData.append(
+        "file",
+        fileInput.files[0]
+    );
+
+
+    formData.append(
+        "subject",
+        subject
+    );
+
+
+    formData.append(
+        "chapter",
+        chapter
+    );
+
+
+    status.textContent =
+        "Uploading...";
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/upload",
+                {
+                    method: "POST",
+                    body: formData
+                }
+            );
+
+
+        const data =
+            await response.json();
+
 
         if (!response.ok) {
+
             status.textContent =
-                data.detail || "Upload failed.";
+                data.detail ||
+                "Upload failed.";
+
             return;
         }
+
 
         status.textContent =
             "✅ Uploaded successfully: " +
@@ -192,95 +513,217 @@ async function uploadDocument() {
             " | Chunks: " +
             data.chunks_added;
 
-    } catch (error) {
+
+        // Refresh subject list
+        await loadSubjects();
+
+
+        // Keep chapter dropdown disabled
+        // until a subject is selected
+        await loadChapters();
+
+    }
+
+
+    catch (error) {
 
         status.textContent =
             "❌ Error connecting to server.";
 
         console.error(error);
+
     }
+
 }
 
+
+// ==========================================
+// ASK QUESTION
+// ==========================================
 
 async function askQuestion() {
 
     const question =
-        document.getElementById("question").value.trim();
+        document.getElementById(
+            "question"
+        ).value.trim();
+
+
+    const subject =
+        document.getElementById(
+            "questionSubject"
+        ).value;
+
+
+    const chapter =
+        document.getElementById(
+            "questionChapter"
+        ).value;
+
 
     const answer =
-        document.getElementById("answer");
+        document.getElementById(
+            "answer"
+        );
+
 
     const sources =
-        document.getElementById("sources");
+        document.getElementById(
+            "sources"
+        );
+
 
     const loading =
-        document.getElementById("loading");
+        document.getElementById(
+            "loading"
+        );
+
 
     if (!question) {
-        answer.textContent = "Please enter a question.";
+
+        answer.textContent =
+            "Please enter a question.";
+
         return;
     }
 
-    loading.classList.remove("hidden");
+
+    loading.classList.remove(
+        "hidden"
+    );
+
 
     answer.textContent = "";
+
     sources.textContent = "";
+
 
     try {
 
-        const response = await fetch("/ask", {
+        const response =
+            await fetch(
+                "/ask",
+                {
+                    method: "POST",
 
-            method: "POST",
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
 
-            headers: {
-                "Content-Type": "application/json"
-            },
+                    body: JSON.stringify({
 
-            body: JSON.stringify({
-                question: question
-            })
-        });
+                        question:
+                            question,
 
-        const data = await response.json();
+                        subject:
+                            subject || null,
+
+                        chapter:
+                            chapter || null
+
+                    })
+
+                }
+            );
+
+
+        const data =
+            await response.json();
+
 
         if (!response.ok) {
 
             answer.textContent =
-                data.detail || "Something went wrong.";
+                data.detail ||
+                "Something went wrong.";
 
             return;
         }
 
+
         answer.textContent =
             data.answer;
 
-        sources.textContent =
-            data.sources
-                .map(
-                    source =>
-                        `File: ${source.metadata.filename}
+
+        // ==================================
+        // DISPLAY SOURCES
+        // ==================================
+
+        if (
+            data.sources &&
+            data.sources.length > 0
+        ) {
+
+            sources.textContent =
+                data.sources
+                    .map(
+                        source =>
+
+                            `File: ${source.metadata.filename}
 Subject: ${source.metadata.subject}
 Chapter: ${source.metadata.chapter}
 Distance: ${source.distance.toFixed(4)}
 
 ${source.text}`
-                )
-                .join("\n\n-------------------------\n\n");
+                    )
+                    .join(
+                        "\n\n-------------------------\n\n"
+                    );
 
-    } catch (error) {
+        }
+
+        else {
+
+            sources.textContent =
+                "No sources found.";
+
+        }
+
+    }
+
+
+    catch (error) {
 
         answer.textContent =
             "❌ Unable to connect to the server.";
 
         console.error(error);
 
-    } finally {
-
-        loading.classList.add("hidden");
     }
+
+
+    finally {
+
+        loading.classList.add(
+            "hidden"
+        );
+
+    }
+
 }
+
+
+// ==========================================
+// INITIAL PAGE LOAD
+// ==========================================
+
+window.addEventListener(
+    "DOMContentLoaded",
+    async function() {
+
+        await loadSubjects();
+
+        // Initially show only "All Chapters"
+        await loadChapters();
+
+    }
+);
+
 
 </script>
 
+
 </body>
+
 </html>
