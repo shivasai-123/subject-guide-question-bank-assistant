@@ -180,7 +180,10 @@
         ></textarea>
 
 
-        <button onclick="askQuestion()">
+        <button
+            type="button"
+            id="askButton"
+        >
             Ask Question
         </button>
 
@@ -543,66 +546,87 @@ async function uploadDocument() {
 
 async function askQuestion() {
 
-    const question =
-        document.getElementById(
-            "question"
-        ).value.trim();
+    console.log("Ask Question button clicked");
 
+    const questionElement =
+        document.getElementById("question");
+
+    const subjectElement =
+        document.getElementById("questionSubject");
+
+    const chapterElement =
+        document.getElementById("questionChapter");
+
+    const answerElement =
+        document.getElementById("answer");
+
+    const sourcesElement =
+        document.getElementById("sources");
+
+    const loadingElement =
+        document.getElementById("loading");
+
+
+    const question =
+        questionElement.value.trim();
 
     const subject =
-        document.getElementById(
-            "questionSubject"
-        ).value;
-
+        subjectElement.value;
 
     const chapter =
-        document.getElementById(
-            "questionChapter"
-        ).value;
-
-
-    const answer =
-        document.getElementById(
-            "answer"
-        );
-
-
-    const sources =
-        document.getElementById(
-            "sources"
-        );
-
-
-    const loading =
-        document.getElementById(
-            "loading"
-        );
+        chapterElement.value;
 
 
     if (!question) {
 
-        answer.textContent =
+        answerElement.textContent =
             "Please enter a question.";
 
         return;
     }
 
 
-    loading.classList.remove(
+    loadingElement.classList.remove(
         "hidden"
     );
 
+    answerElement.textContent =
+        "";
 
-    answer.textContent = "";
+    sourcesElement.textContent = "";
 
-    sources.textContent = "";
+
+    const requestData = {
+
+        question: question,
+
+        subject: subject || null,
+
+        chapter: chapter || null
+    };
+
+
+    console.log(
+        "Sending request:",
+        requestData
+    );
 
 
     try {
 
+        const controller =
+            new AbortController();
+
+        const timeout =
+            setTimeout(
+                () => controller.abort(),
+                120000
+            );
+
+
         const response =
             await fetch(
-                "/ask",
+                window.location.origin + "/ask",
                 {
                     method: "POST",
 
@@ -611,30 +635,39 @@ async function askQuestion() {
                             "application/json"
                     },
 
-                    body: JSON.stringify({
+                    body:
+                        JSON.stringify(
+                            requestData
+                        ),
 
-                        question:
-                            question,
-
-                        subject:
-                            subject || null,
-
-                        chapter:
-                            chapter || null
-
-                    })
-
+                    signal:
+                        controller.signal
                 }
             );
+
+
+        clearTimeout(timeout);
+
+
+        console.log(
+            "Response status:",
+            response.status
+        );
 
 
         const data =
             await response.json();
 
 
+        console.log(
+            "Response data:",
+            data
+        );
+
+
         if (!response.ok) {
 
-            answer.textContent =
+            answerElement.textContent =
                 data.detail ||
                 "Something went wrong.";
 
@@ -642,8 +675,9 @@ async function askQuestion() {
         }
 
 
-        answer.textContent =
-            data.answer;
+        answerElement.textContent =
+            data.answer ||
+            "No answer was returned.";
 
 
         // ==================================
@@ -655,18 +689,21 @@ async function askQuestion() {
             data.sources.length > 0
         ) {
 
-            sources.textContent =
+            sourcesElement.textContent =
                 data.sources
-                    .map(
-                        source =>
+                    .map(source => {
 
-                            `File: ${source.metadata.filename}
+                        return (
+`File: ${source.metadata.filename}
 Subject: ${source.metadata.subject}
 Chapter: ${source.metadata.chapter}
-Distance: ${source.distance.toFixed(4)}
+Content Type: ${source.metadata.content_type || "Notes"}
+Distance: ${Number(source.distance).toFixed(4)}
 
 ${source.text}`
-                    )
+                        );
+
+                    })
                     .join(
                         "\n\n-------------------------\n\n"
                     );
@@ -675,27 +712,42 @@ ${source.text}`
 
         else {
 
-            sources.textContent =
+            sourcesElement.textContent =
                 "No sources found.";
 
         }
 
     }
 
-
     catch (error) {
 
-        answer.textContent =
-            "❌ Unable to connect to the server.";
+        console.error(
+            "Ask request failed:",
+            error
+        );
 
-        console.error(error);
+
+        if (
+            error.name === "AbortError"
+        ) {
+
+            answerElement.textContent =
+                "⏳ The request took too long. Please try again.";
+
+        }
+
+        else {
+
+            answerElement.textContent =
+                "❌ Unable to connect to the server.";
+
+        }
 
     }
 
-
     finally {
 
-        loading.classList.add(
+        loadingElement.classList.add(
             "hidden"
         );
 
@@ -704,9 +756,18 @@ ${source.text}`
 }
 
 
+
 // ==========================================
 // INITIAL PAGE LOAD
 // ==========================================
+
+document
+    .getElementById("askButton")
+    .addEventListener(
+        "click",
+        askQuestion
+    );
+
 
 window.addEventListener(
     "DOMContentLoaded",

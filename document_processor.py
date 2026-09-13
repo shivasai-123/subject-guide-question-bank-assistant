@@ -8,11 +8,13 @@ import pymupdf
 # ==========================================
 
 def extract_text_from_pdf(file_path):
+
     doc = pymupdf.open(file_path)
 
     full_text = ""
 
     for page in doc:
+
         full_text += page.get_text() + "\n"
 
     doc.close()
@@ -25,6 +27,7 @@ def extract_text_from_pdf(file_path):
 # ==========================================
 
 def clean_line(line):
+
     """
     Remove invisible characters that can appear
     during PDF text extraction.
@@ -39,6 +42,7 @@ def clean_line(line):
     # Byte-order mark
     line = line.replace("\ufeff", "")
 
+    # Remove extra spaces
     line = line.strip()
 
     return line
@@ -49,6 +53,7 @@ def clean_line(line):
 # ==========================================
 
 def normalize_chapter_name(chapter):
+
     """
     Normalize chapter names so that small
     formatting differences do not create
@@ -60,17 +65,24 @@ def normalize_chapter_name(chapter):
     if not chapter:
         return "General"
 
+
     match = re.match(
         r"^Chapter\s*(\d+)\s*[:.]?\s*(.+)$",
         chapter,
         re.IGNORECASE
     )
 
+
     if not match:
         return chapter
 
-    number = int(match.group(1))
+
+    number = int(
+        match.group(1)
+    )
+
     title = match.group(2).strip()
+
 
     # Normalize multiple spaces
     title = re.sub(
@@ -78,6 +90,7 @@ def normalize_chapter_name(chapter):
         " ",
         title
     )
+
 
     # Remove "in Python" when it is a duplicate
     title = re.sub(
@@ -87,58 +100,87 @@ def normalize_chapter_name(chapter):
         flags=re.IGNORECASE
     )
 
+
     # Common formatting corrections
     title = title.replace(
         "ControlFlow",
         "Control Flow"
     )
 
+
     title = re.sub(
-        r"Data Structuress+",
+        r"Data\s+Structuress+",
         "Data Structures",
         title,
         flags=re.IGNORECASE
     )
+
 
     # Remove trailing punctuation
     title = title.rstrip(
         " .:-"
     )
 
+
     # Canonical chapter titles
     canonical_titles = {
 
         1: "Introduction to Python",
+
         2: "Environment Setup",
+
         3: "Python Syntax Basics",
+
         4: "Data Types",
+
         5: "Operators",
+
         6: "String Operations",
+
         7: "Control Flow",
+
         8: "Loops and Iteration",
+
         9: "Data Structures",
+
         10: "Functions",
+
         11: "Advanced Functions",
+
         12: "Scope and Namespaces",
+
         13: "Modules and Packages",
+
         14: "Object-Oriented Programming",
+
         15: "Advanced OOP",
+
         16: "File Handling and Error Management",
+
         17: "Advanced Python Concepts",
+
         18: "Concurrent and Asynchronous Programming"
     }
 
+
     if number in canonical_titles:
+
         title = canonical_titles[number]
 
-    return f"Chapter {number}: {title}"
+
+    return (
+        f"Chapter {number}: {title}"
+    )
 
 
 # ==========================================
 # 4. DETECT CHAPTER
 # ==========================================
 
-def detect_chapter(line, document_type):
+def detect_chapter(
+    line,
+    document_type
+):
 
     line = clean_line(line)
 
@@ -159,6 +201,7 @@ def detect_chapter(line, document_type):
         )
 
         if match:
+
             return normalize_chapter_name(
                 line
             )
@@ -173,11 +216,12 @@ def detect_chapter(line, document_type):
     if document_type == "simple_number_style":
 
         match = re.match(
-            r"^\d+\.\s+[A-Za-z][A-Za-z0-9 &()/*+\-]*\??$",
+            r"^\d+\.\s+[A-Za-z][A-Za-z0-9 &()/\\*+\-'.:]*$",
             line
         )
 
         if match:
+
             return line
 
         return None
@@ -197,20 +241,66 @@ def get_document_type(file_path):
     ).lower()
 
 
-    # C Programming
+    # ======================================
+    # QUESTION BANK
+    # ======================================
+
+    question_bank_keywords = [
+
+        "question",
+
+        "question bank",
+
+        "questionbank",
+
+        "previous year",
+
+        "previousyear",
+
+        "pyq",
+
+        "paper",
+
+        "exam",
+
+        "questionpaper",
+
+        "question paper"
+    ]
+
+
+    for keyword in question_bank_keywords:
+
+        if keyword in filename:
+
+            return "question_bank"
+
+
+    # ======================================
+    # C PROGRAMMING
+    # ======================================
+
     if (
         "c_programming" in filename
         or "c programming" in filename
     ):
+
         return "simple_number_style"
 
 
-    # Python
+    # ======================================
+    # PYTHON
+    # ======================================
+
     if "python" in filename:
+
         return "chapter_style"
 
 
-    # Default
+    # ======================================
+    # DEFAULT
+    # ======================================
+
     return "chapter_style"
 
 
@@ -231,12 +321,16 @@ def split_into_chapters(
         cleaned = clean_line(line)
 
         if cleaned:
-            lines.append(cleaned)
+
+            lines.append(
+                cleaned
+            )
 
 
     sections = []
 
     current_chapter = default_chapter
+
     current_lines = []
 
     found_first_heading = False
@@ -263,15 +357,20 @@ def split_into_chapters(
 
                 sections.append(
                     {
-                        "chapter": current_chapter,
-                        "lines": current_lines
+                        "chapter":
+                            current_chapter,
+
+                        "lines":
+                            current_lines
                     }
                 )
 
 
             current_chapter = heading
 
-            current_lines = [line]
+            current_lines = [
+                line
+            ]
 
             found_first_heading = True
 
@@ -284,9 +383,12 @@ def split_into_chapters(
 
             # Ignore text before the first
             # detected chapter.
+
             if found_first_heading:
 
-                current_lines.append(line)
+                current_lines.append(
+                    line
+                )
 
 
     # --------------------------------------
@@ -300,8 +402,11 @@ def split_into_chapters(
 
         sections.append(
             {
-                "chapter": current_chapter,
-                "lines": current_lines
+                "chapter":
+                    current_chapter,
+
+                "lines":
+                    current_lines
             }
         )
 
@@ -314,8 +419,11 @@ def split_into_chapters(
 
         sections.append(
             {
-                "chapter": default_chapter,
-                "lines": lines
+                "chapter":
+                    default_chapter,
+
+                "lines":
+                    lines
             }
         )
 
@@ -368,7 +476,103 @@ def chunk_chapter(
 
 
 # ==========================================
-# 8. PROCESS ONE PDF
+# 8. CHUNK QUESTION BANK
+# ==========================================
+
+def chunk_question_bank(text):
+
+    """
+    Create one chunk for each numbered
+    question in a question bank.
+
+    Example:
+
+    1. BFS
+    2. DFS
+    3. Water Jug
+
+    becomes:
+
+    Chunk 1 -> Question 1
+    Chunk 2 -> Question 2
+    Chunk 3 -> Question 3
+    """
+
+    lines = []
+
+    for line in text.splitlines():
+
+        cleaned = clean_line(line)
+
+        if cleaned:
+
+            lines.append(
+                cleaned
+            )
+
+
+    questions = []
+
+    current_question = []
+
+
+    for line in lines:
+
+        # Detect numbered questions:
+        #
+        # 1. ...
+        # 2. ...
+        # 10. ...
+
+        match = re.match(
+            r"^\d+\.\s+",
+            line
+        )
+
+
+        if match:
+
+            # Save previous question
+            if current_question:
+
+                questions.append(
+                    " ".join(
+                        current_question
+                    )
+                )
+
+
+            # Start new question
+            current_question = [
+                line
+            ]
+
+
+        else:
+
+            # Continue current question
+            if current_question:
+
+                current_question.append(
+                    line
+                )
+
+
+    # Save final question
+    if current_question:
+
+        questions.append(
+            " ".join(
+                current_question
+            )
+        )
+
+
+    return questions
+
+
+# ==========================================
+# 9. PROCESS ONE PDF
 # ==========================================
 
 def process_pdf(
@@ -381,37 +585,87 @@ def process_pdf(
         file_path
     )
 
+
     filename = os.path.basename(
         file_path
     )
+
 
     document_type = get_document_type(
         file_path
     )
 
 
-    # Split PDF into chapters
+    documents = []
+
+
+    # ======================================
+    # QUESTION BANK PROCESSING
+    # ======================================
+
+    if document_type == "question_bank":
+
+        questions = chunk_question_bank(
+            text
+        )
+
+
+        for question in questions:
+
+            documents.append(
+                {
+                    "text":
+                        question,
+
+                    "metadata": {
+
+                        "filename":
+                            filename,
+
+                        "subject":
+                            subject,
+
+                        "chapter":
+                            chapter,
+
+                        "content_type":
+                            "Question Bank"
+                    }
+                }
+            )
+
+
+        return documents
+
+
+    # ======================================
+    # NORMAL DOCUMENT PROCESSING
+    # ======================================
+
     sections = split_into_chapters(
         text=text,
+
         default_chapter=chapter,
+
         document_type=document_type
     )
-
-
-    documents = []
 
 
     # Create chunks inside each chapter
     for section in sections:
 
-        chapter_name = normalize_chapter_name(
-            section["chapter"]
+        chapter_name = (
+            normalize_chapter_name(
+                section["chapter"]
+            )
         )
 
 
         chunks = chunk_chapter(
             section["lines"],
+
             chunk_size=8,
+
             overlap=2
         )
 
@@ -420,12 +674,19 @@ def process_pdf(
 
             documents.append(
                 {
-                    "text": chunk,
+                    "text":
+                        chunk,
 
                     "metadata": {
-                        "filename": filename,
-                        "subject": subject,
-                        "chapter": chapter_name
+
+                        "filename":
+                            filename,
+
+                        "subject":
+                            subject,
+
+                        "chapter":
+                            chapter_name
                     }
                 }
             )
@@ -435,10 +696,12 @@ def process_pdf(
 
 
 # ==========================================
-# 9. PROCESS MULTIPLE PDFs
+# 10. PROCESS MULTIPLE PDFs
 # ==========================================
 
-def process_multiple_pdfs(documents):
+def process_multiple_pdfs(
+    documents
+):
 
     all_documents = []
 

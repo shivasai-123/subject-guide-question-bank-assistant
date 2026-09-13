@@ -18,7 +18,7 @@ from learning_tools import LearningTools
 app = FastAPI(
     title="Subject Guide & Question Bank AI Assistant",
     description="Multi-document RAG academic learning assistant",
-    version="3.0"
+    version="3.2"
 )
 
 
@@ -46,7 +46,57 @@ os.makedirs(
 
 
 # ==========================================
-# 4. LOAD EXISTING PDFS
+# 4. DETECT CONTENT TYPE
+# ==========================================
+
+def detect_content_type(filename):
+
+    filename_lower = filename.lower()
+
+    question_bank_keywords = [
+        "question",
+        "question bank",
+        "questionbank",
+        "previous year",
+        "previousyear",
+        "pyq",
+        "paper",
+        "exam",
+        "questionpaper",
+        "question paper"
+    ]
+
+    lab_keywords = [
+        "lab",
+        "laboratory",
+        "practical"
+    ]
+
+    textbook_keywords = [
+        "textbook",
+        "book"
+    ]
+
+    for keyword in question_bank_keywords:
+
+        if keyword in filename_lower:
+            return "Question Bank"
+
+    for keyword in lab_keywords:
+
+        if keyword in filename_lower:
+            return "Lab Manual"
+
+    for keyword in textbook_keywords:
+
+        if keyword in filename_lower:
+            return "Textbook"
+
+    return "Notes"
+
+
+# ==========================================
+# 5. LOAD EXISTING PDFS
 # ==========================================
 
 def load_existing_documents():
@@ -63,9 +113,9 @@ def load_existing_documents():
             "chapter": "General"
         },
 
-        "ACD UNIT- 2.pdf": {
-            "subject": "Artificial Intelligence",
-            "chapter": "Unit 2"
+        "Python Question Bank.pdf": {
+            "subject": "Python",
+            "chapter": "General"
         },
 
         "2919.pdf": {
@@ -74,11 +124,13 @@ def load_existing_documents():
         }
     }
 
+
     pdf_files = [
         file
         for file in os.listdir(DATA_FOLDER)
         if file.lower().endswith(".pdf")
     ]
+
 
     for filename in pdf_files:
 
@@ -86,6 +138,7 @@ def load_existing_documents():
             DATA_FOLDER,
             filename
         )
+
 
         metadata = document_metadata.get(
             filename,
@@ -95,6 +148,12 @@ def load_existing_documents():
             }
         )
 
+
+        content_type = detect_content_type(
+            filename
+        )
+
+
         try:
 
             documents = process_pdf(
@@ -103,15 +162,27 @@ def load_existing_documents():
                 chapter=metadata["chapter"]
             )
 
+
+            # Add content type to every chunk
+            for document in documents:
+
+                document["metadata"][
+                    "content_type"
+                ] = content_type
+
+
             rag.add_documents(
                 documents
             )
 
+
             print(
                 f"Loaded: {filename} "
                 f"| Subject: {metadata['subject']} "
-                f"| Chapter: {metadata['chapter']}"
+                f"| Chapter: {metadata['chapter']} "
+                f"| Type: {content_type}"
             )
+
 
         except Exception as e:
 
@@ -119,11 +190,12 @@ def load_existing_documents():
                 f"Could not load {filename}: {e}"
             )
 
+
 load_existing_documents()
 
 
 # ==========================================
-# 5. REQUEST MODELS
+# 6. REQUEST MODELS
 # ==========================================
 
 class Question(BaseModel):
@@ -139,7 +211,7 @@ class TopicRequest(BaseModel):
 
 
 # ==========================================
-# 6. HOME PAGE
+# 7. HOME PAGE
 # ==========================================
 
 @app.get("/")
@@ -151,7 +223,7 @@ def home():
 
 
 # ==========================================
-# 7. HEALTH CHECK
+# 8. HEALTH CHECK
 # ==========================================
 
 @app.get("/health")
@@ -167,7 +239,7 @@ def health():
 
 
 # ==========================================
-# 8. UPLOAD PDF
+# 9. UPLOAD PDF
 # ==========================================
 
 @app.post("/upload")
@@ -184,6 +256,7 @@ async def upload_document(
             detail="No filename provided"
         )
 
+
     if not file.filename.lower().endswith(".pdf"):
 
         raise HTTPException(
@@ -191,19 +264,30 @@ async def upload_document(
             detail="Only PDF files are supported currently."
         )
 
+
     file_path = os.path.join(
         DATA_FOLDER,
         file.filename
     )
 
+
+    content_type = detect_content_type(
+        file.filename
+    )
+
+
     try:
 
-        with open(file_path, "wb") as buffer:
+        with open(
+            file_path,
+            "wb"
+        ) as buffer:
 
             shutil.copyfileobj(
                 file.file,
                 buffer
             )
+
 
         documents = process_pdf(
             file_path=file_path,
@@ -211,9 +295,19 @@ async def upload_document(
             chapter=chapter
         )
 
+
+        # Add content type to every chunk
+        for document in documents:
+
+            document["metadata"][
+                "content_type"
+            ] = content_type
+
+
         rag.add_documents(
             documents
         )
+
 
         return {
 
@@ -229,6 +323,9 @@ async def upload_document(
             "chapter":
                 chapter,
 
+            "content_type":
+                content_type,
+
             "chunks_added":
                 len(documents),
 
@@ -239,6 +336,7 @@ async def upload_document(
                 rag.get_vector_count()
         }
 
+
     except Exception as e:
 
         raise HTTPException(
@@ -248,13 +346,14 @@ async def upload_document(
 
 
 # ==========================================
-# 9. ASK QUESTION
+# 10. ASK QUESTION
 # ==========================================
 
 @app.post("/ask")
 def ask_question(data: Question):
 
     query = data.question.strip()
+
 
     if not query:
 
@@ -263,12 +362,17 @@ def ask_question(data: Question):
             detail="Question cannot be empty."
         )
 
+
+    # --------------------------------------
     # Clean optional filters
+    # --------------------------------------
+
     subject = (
         data.subject.strip()
         if data.subject
         else None
     )
+
 
     chapter = (
         data.chapter.strip()
@@ -276,15 +380,68 @@ def ask_question(data: Question):
         else None
     )
 
-    # Retrieve only matching subject/chapter
-    results = rag.retrieve(
-        query,
-        k=5,
-        subject=subject,
-        chapter=chapter
+
+    # ======================================
+    # DETECT "LIST QUESTION BANK" QUERY
+    # ======================================
+
+    query_lower = query.lower()
+
+
+    list_question_bank_query = any(
+        phrase in query_lower
+        for phrase in [
+
+            "what questions are included",
+
+            "what questions are in",
+
+            "which questions are included",
+
+            "which questions are in",
+
+            "list the questions",
+
+            "list all questions",
+
+            "all questions in the question bank",
+
+            "questions included in the external question bank",
+
+            "programs included in the question bank",
+
+            "programs are included in the question bank"
+        ]
     )
 
-    # No relevant documents found
+
+    # ======================================
+    # RETRIEVE MATERIAL
+    # ======================================
+
+    if list_question_bank_query:
+
+        results = (
+            rag.get_all_question_bank_documents(
+                subject=subject,
+                chapter=chapter
+            )
+        )
+
+    else:
+
+        results = rag.retrieve(
+            query,
+            k=5,
+            subject=subject,
+            chapter=chapter
+        )
+
+
+    # ======================================
+    # NO RELEVANT DOCUMENTS
+    # ======================================
+
     if not results:
 
         return {
@@ -301,14 +458,25 @@ def ask_question(data: Question):
             "sources": []
         }
 
+
+    # ======================================
+    # BUILD CONTEXT
+    # ======================================
+
     context = rag.build_context(
         results
     )
+
+
+    # ======================================
+    # GENERATE ANSWER
+    # ======================================
 
     answer = learning.solve_question(
         query,
         context
     )
+
 
     return {
 
@@ -330,7 +498,7 @@ def ask_question(data: Question):
 
 
 # ==========================================
-# 10. TOPIC EXPLANATION
+# 11. TOPIC EXPLANATION
 # ==========================================
 
 @app.post("/explain")
@@ -338,6 +506,7 @@ def explain_topic(data: TopicRequest):
 
     topic = data.topic.strip()
 
+
     if not topic:
 
         raise HTTPException(
@@ -345,19 +514,23 @@ def explain_topic(data: TopicRequest):
             detail="Topic cannot be empty."
         )
 
+
     results = rag.retrieve(
         topic,
         k=5
     )
 
+
     context = rag.build_context(
         results
     )
+
 
     answer = learning.explain_topic(
         topic,
         context
     )
+
 
     return {
 
@@ -373,7 +546,7 @@ def explain_topic(data: TopicRequest):
 
 
 # ==========================================
-# 11. CONTENT SYNTHESIS
+# 12. CONTENT SYNTHESIS
 # ==========================================
 
 @app.post("/synthesize")
@@ -381,6 +554,7 @@ def synthesize_content(data: TopicRequest):
 
     topic = data.topic.strip()
 
+
     if not topic:
 
         raise HTTPException(
@@ -388,19 +562,23 @@ def synthesize_content(data: TopicRequest):
             detail="Topic cannot be empty."
         )
 
+
     results = rag.retrieve(
         topic,
         k=5
     )
 
+
     context = rag.build_context(
         results
     )
+
 
     answer = learning.synthesize_content(
         topic,
         context
     )
+
 
     return {
 
@@ -416,7 +594,7 @@ def synthesize_content(data: TopicRequest):
 
 
 # ==========================================
-# 12. LEARNING PROGRESSION
+# 13. LEARNING PROGRESSION
 # ==========================================
 
 @app.post("/progression")
@@ -424,6 +602,7 @@ def progression(data: TopicRequest):
 
     topic = data.topic.strip()
 
+
     if not topic:
 
         raise HTTPException(
@@ -431,19 +610,23 @@ def progression(data: TopicRequest):
             detail="Topic cannot be empty."
         )
 
+
     results = rag.retrieve(
         topic,
         k=5
     )
 
+
     context = rag.build_context(
         results
     )
+
 
     answer = learning.learning_progression(
         topic,
         context
     )
+
 
     return {
 
@@ -459,7 +642,7 @@ def progression(data: TopicRequest):
 
 
 # ==========================================
-# 13. LEARNING HISTORY
+# 14. LEARNING HISTORY
 # ==========================================
 
 @app.get("/history")
@@ -472,7 +655,7 @@ def get_history():
 
 
 # ==========================================
-# 14. SUBJECTS
+# 15. SUBJECTS
 # ==========================================
 
 @app.get("/subjects")
@@ -485,7 +668,7 @@ def get_subjects():
 
 
 # ==========================================
-# 15. CHAPTERS
+# 16. CHAPTERS
 # ==========================================
 
 @app.get("/chapters")
