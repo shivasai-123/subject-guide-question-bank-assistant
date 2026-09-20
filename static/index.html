@@ -2,78 +2,136 @@
 <html lang="en">
 
 <head>
+
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
     <title>Subject Guide AI Assistant</title>
+
 
     <style>
 
         body {
+
             font-family: Arial, sans-serif;
+
             max-width: 900px;
+
             margin: 40px auto;
+
             padding: 20px;
+
             background: #f5f7fb;
         }
 
+
         h1 {
+
             text-align: center;
         }
 
+
         .card {
+
             background: white;
+
             padding: 20px;
+
             margin-bottom: 20px;
+
             border-radius: 10px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+
+            box-shadow:
+                0 2px 8px rgba(0,0,0,0.08);
         }
+
 
         input,
         textarea,
         select,
         button {
+
             width: 100%;
+
             box-sizing: border-box;
+
             padding: 10px;
+
             margin-top: 8px;
+
             margin-bottom: 12px;
+
             border-radius: 6px;
+
             border: 1px solid #ccc;
         }
 
+
         button {
+
             cursor: pointer;
+
             font-weight: bold;
         }
 
+
         button:hover {
+
             background: #eeeeee;
         }
 
+
         select:disabled {
+
             background: #eeeeee;
+
             cursor: not-allowed;
         }
 
+
         #answer {
+
             white-space: pre-wrap;
+
             line-height: 1.6;
         }
 
+
         #sources {
+
             white-space: pre-wrap;
+
             font-size: 14px;
+
             line-height: 1.5;
         }
 
+
         .hidden {
+
             display: none;
         }
 
+
         .status {
+
             margin-top: 10px;
+
             font-weight: bold;
+        }
+
+
+        .supported-formats {
+
+            font-size: 14px;
+
+            color: #666;
+
+            margin-bottom: 12px;
         }
 
     </style>
@@ -82,6 +140,7 @@
 
 
 <body>
+
 
     <h1>📚 Subject Guide AI Assistant</h1>
 
@@ -94,12 +153,17 @@
 
         <h2>📄 Upload Study Material</h2>
 
-        <label>Select PDF:</label>
+        <p class="supported-formats">
+            Supported formats: PDF, DOCX, PPTX
+        </p>
+
+
+        <label>Select Study Material:</label>
 
         <input
             type="file"
             id="fileInput"
-            accept=".pdf"
+            accept=".pdf,.docx,.pptx"
         >
 
 
@@ -121,7 +185,10 @@
         >
 
 
-        <button onclick="uploadDocument()">
+        <button
+            type="button"
+            onclick="uploadDocument()"
+        >
             Upload Document
         </button>
 
@@ -230,559 +297,661 @@
     </div>
 
 
-
-<script>
-
-
-// ==========================================
-// LOAD SUBJECTS
-// ==========================================
-
-async function loadSubjects() {
-
-    try {
-
-        const response =
-            await fetch("/subjects");
-
-        const data =
-            await response.json();
+    <script>
 
 
-        const subjectSelect =
-            document.getElementById(
-                "questionSubject"
+        // ==========================================
+        // LOAD SUBJECTS
+        // ==========================================
+
+        async function loadSubjects() {
+
+            try {
+
+                const response =
+                    await fetch("/subjects");
+
+
+                const data =
+                    await response.json();
+
+
+                const subjectSelect =
+                    document.getElementById(
+                        "questionSubject"
+                    );
+
+
+                subjectSelect.innerHTML = `
+                    <option value="">
+                        All Subjects
+                    </option>
+                `;
+
+
+                data.subjects.forEach(
+                    subject => {
+
+                        const option =
+                            document.createElement(
+                                "option"
+                            );
+
+
+                        option.value =
+                            subject;
+
+
+                        option.textContent =
+                            subject;
+
+
+                        subjectSelect.appendChild(
+                            option
+                        );
+
+                    }
+                );
+
+            }
+
+            catch (error) {
+
+                console.error(
+                    "Could not load subjects:",
+                    error
+                );
+
+            }
+
+        }
+
+
+        // ==========================================
+        // LOAD CHAPTERS
+        // ==========================================
+
+        async function loadChapters() {
+
+            const subject =
+                document.getElementById(
+                    "questionSubject"
+                ).value;
+
+
+            const chapterSelect =
+                document.getElementById(
+                    "questionChapter"
+                );
+
+
+            // --------------------------------------
+            // ALL SUBJECTS
+            // --------------------------------------
+
+            if (!subject) {
+
+                chapterSelect.innerHTML = `
+                    <option value="">
+                        All Chapters
+                    </option>
+                `;
+
+
+                chapterSelect.disabled =
+                    true;
+
+
+                return;
+            }
+
+
+            // --------------------------------------
+            // SUBJECT SELECTED
+            // --------------------------------------
+
+            chapterSelect.disabled =
+                false;
+
+
+            chapterSelect.innerHTML = `
+                <option value="">
+                    Loading chapters...
+                </option>
+            `;
+
+
+            try {
+
+                const url =
+                    "/chapters?subject=" +
+                    encodeURIComponent(
+                        subject
+                    );
+
+
+                const response =
+                    await fetch(url);
+
+
+                const data =
+                    await response.json();
+
+
+                chapterSelect.innerHTML = `
+                    <option value="">
+                        All Chapters
+                    </option>
+                `;
+
+
+                data.chapters.forEach(
+                    chapter => {
+
+                        const option =
+                            document.createElement(
+                                "option"
+                            );
+
+
+                        option.value =
+                            chapter;
+
+
+                        option.textContent =
+                            chapter;
+
+
+                        chapterSelect.appendChild(
+                            option
+                        );
+
+                    }
+                );
+
+            }
+
+            catch (error) {
+
+                console.error(
+                    "Could not load chapters:",
+                    error
+                );
+
+
+                chapterSelect.innerHTML = `
+                    <option value="">
+                        Could not load chapters
+                    </option>
+                `;
+
+            }
+
+        }
+
+
+        // ==========================================
+        // UPLOAD DOCUMENT
+        // ==========================================
+
+        async function uploadDocument() {
+
+            const fileInput =
+                document.getElementById(
+                    "fileInput"
+                );
+
+
+            const subject =
+                document.getElementById(
+                    "subjectInput"
+                ).value.trim();
+
+
+            const chapter =
+                document.getElementById(
+                    "chapterInput"
+                ).value.trim();
+
+
+            const status =
+                document.getElementById(
+                    "uploadStatus"
+                );
+
+
+            if (!fileInput.files.length) {
+
+                status.textContent =
+                    "Please select a PDF, DOCX, or PPTX file.";
+
+                return;
+            }
+
+
+            if (!subject) {
+
+                status.textContent =
+                    "Please enter a subject.";
+
+                return;
+            }
+
+
+            if (!chapter) {
+
+                status.textContent =
+                    "Please enter a chapter.";
+
+                return;
+            }
+
+
+            const selectedFile =
+                fileInput.files[0];
+
+
+            const allowedExtensions = [
+                ".pdf",
+                ".docx",
+                ".pptx"
+            ];
+
+
+            const filename =
+                selectedFile.name.toLowerCase();
+
+
+            const validFile =
+                allowedExtensions.some(
+                    extension =>
+                        filename.endsWith(
+                            extension
+                        )
+                );
+
+
+            if (!validFile) {
+
+                status.textContent =
+                    "Only PDF, DOCX, and PPTX files are supported.";
+
+                return;
+            }
+
+
+            const formData =
+                new FormData();
+
+
+            formData.append(
+                "file",
+                selectedFile
             );
 
 
-        subjectSelect.innerHTML = `
-            <option value="">
-                All Subjects
-            </option>
-        `;
-
-
-        data.subjects.forEach(subject => {
-
-            const option =
-                document.createElement("option");
-
-            option.value = subject;
-            option.textContent = subject;
-
-            subjectSelect.appendChild(
-                option
-            );
-
-        });
-
-    }
-
-    catch (error) {
-
-        console.error(
-            "Could not load subjects:",
-            error
-        );
-
-    }
-
-}
-
-
-// ==========================================
-// LOAD CHAPTERS
-// ==========================================
-
-async function loadChapters() {
-
-    const subject =
-        document.getElementById(
-            "questionSubject"
-        ).value;
-
-
-    const chapterSelect =
-        document.getElementById(
-            "questionChapter"
-        );
-
-
-    // --------------------------------------
-    // ALL SUBJECTS
-    // --------------------------------------
-
-    if (!subject) {
-
-        chapterSelect.innerHTML = `
-            <option value="">
-                All Chapters
-            </option>
-        `;
-
-        chapterSelect.disabled = true;
-
-        return;
-    }
-
-
-    // --------------------------------------
-    // SUBJECT SELECTED
-    // --------------------------------------
-
-    chapterSelect.disabled = false;
-
-
-    chapterSelect.innerHTML = `
-        <option value="">
-            Loading chapters...
-        </option>
-    `;
-
-
-    try {
-
-        const url =
-            "/chapters?subject=" +
-            encodeURIComponent(subject);
-
-
-        const response =
-            await fetch(url);
-
-
-        const data =
-            await response.json();
-
-
-        chapterSelect.innerHTML = `
-            <option value="">
-                All Chapters
-            </option>
-        `;
-
-
-        data.chapters.forEach(chapter => {
-
-            const option =
-                document.createElement("option");
-
-            option.value = chapter;
-            option.textContent = chapter;
-
-            chapterSelect.appendChild(
-                option
-            );
-
-        });
-
-    }
-
-    catch (error) {
-
-        console.error(
-            "Could not load chapters:",
-            error
-        );
-
-
-        chapterSelect.innerHTML = `
-            <option value="">
-                Could not load chapters
-            </option>
-        `;
-
-    }
-
-}
-
-
-// ==========================================
-// UPLOAD DOCUMENT
-// ==========================================
-
-async function uploadDocument() {
-
-    const fileInput =
-        document.getElementById(
-            "fileInput"
-        );
-
-
-    const subject =
-        document.getElementById(
-            "subjectInput"
-        ).value.trim();
-
-
-    const chapter =
-        document.getElementById(
-            "chapterInput"
-        ).value.trim();
-
-
-    const status =
-        document.getElementById(
-            "uploadStatus"
-        );
-
-
-    if (!fileInput.files.length) {
-
-        status.textContent =
-            "Please select a PDF.";
-
-        return;
-    }
-
-
-    if (!subject) {
-
-        status.textContent =
-            "Please enter a subject.";
-
-        return;
-    }
-
-
-    if (!chapter) {
-
-        status.textContent =
-            "Please enter a chapter.";
-
-        return;
-    }
-
-
-    const formData =
-        new FormData();
-
-
-    formData.append(
-        "file",
-        fileInput.files[0]
-    );
-
-
-    formData.append(
-        "subject",
-        subject
-    );
-
-
-    formData.append(
-        "chapter",
-        chapter
-    );
-
-
-    status.textContent =
-        "Uploading...";
-
-
-    try {
-
-        const response =
-            await fetch(
-                "/upload",
-                {
-                    method: "POST",
-                    body: formData
-                }
+            formData.append(
+                "subject",
+                subject
             );
 
 
-        const data =
-            await response.json();
+            formData.append(
+                "chapter",
+                chapter
+            );
 
-
-        if (!response.ok) {
 
             status.textContent =
-                data.detail ||
-                "Upload failed.";
+                "Uploading...";
 
-            return;
+
+            try {
+
+                const response =
+                    await fetch(
+                        "/upload",
+                        {
+                            method: "POST",
+                            body: formData
+                        }
+                    );
+
+
+                const data =
+                    await response.json();
+
+
+                if (!response.ok) {
+
+                    status.textContent =
+                        data.detail ||
+                        "Upload failed.";
+
+                    return;
+                }
+
+
+                status.textContent =
+                    "✅ Uploaded successfully: " +
+                    data.filename +
+                    " | Type: " +
+                    data.content_type +
+                    " | Subject: " +
+                    data.subject +
+                    " | Chapter: " +
+                    data.chapter +
+                    " | Chunks: " +
+                    data.chunks_added;
+
+
+                await loadSubjects();
+
+                await loadChapters();
+
+
+                fileInput.value = "";
+
+            }
+
+            catch (error) {
+
+                status.textContent =
+                    "❌ Error connecting to server.";
+
+                console.error(
+                    error
+                );
+
+            }
+
         }
 
 
-        status.textContent =
-            "✅ Uploaded successfully: " +
-            data.filename +
-            " | Subject: " +
-            data.subject +
-            " | Chapter: " +
-            data.chapter +
-            " | Chunks: " +
-            data.chunks_added;
+        // ==========================================
+        // ASK QUESTION
+        // ==========================================
 
+        async function askQuestion() {
 
-        // Refresh subject list
-        await loadSubjects();
-
-
-        // Keep chapter dropdown disabled
-        // until a subject is selected
-        await loadChapters();
-
-    }
-
-
-    catch (error) {
-
-        status.textContent =
-            "❌ Error connecting to server.";
-
-        console.error(error);
-
-    }
-
-}
-
-
-// ==========================================
-// ASK QUESTION
-// ==========================================
-
-async function askQuestion() {
-
-    console.log("Ask Question button clicked");
-
-    const questionElement =
-        document.getElementById("question");
-
-    const subjectElement =
-        document.getElementById("questionSubject");
-
-    const chapterElement =
-        document.getElementById("questionChapter");
-
-    const answerElement =
-        document.getElementById("answer");
-
-    const sourcesElement =
-        document.getElementById("sources");
-
-    const loadingElement =
-        document.getElementById("loading");
-
-
-    const question =
-        questionElement.value.trim();
-
-    const subject =
-        subjectElement.value;
-
-    const chapter =
-        chapterElement.value;
-
-
-    if (!question) {
-
-        answerElement.textContent =
-            "Please enter a question.";
-
-        return;
-    }
-
-
-    loadingElement.classList.remove(
-        "hidden"
-    );
-
-    answerElement.textContent =
-        "";
-
-    sourcesElement.textContent = "";
-
-
-    const requestData = {
-
-        question: question,
-
-        subject: subject || null,
-
-        chapter: chapter || null
-    };
-
-
-    console.log(
-        "Sending request:",
-        requestData
-    );
-
-
-    try {
-
-        const controller =
-            new AbortController();
-
-        const timeout =
-            setTimeout(
-                () => controller.abort(),
-                120000
+            console.log(
+                "Ask Question button clicked"
             );
 
 
-        const response =
-            await fetch(
-                window.location.origin + "/ask",
-                {
-                    method: "POST",
+            const questionElement =
+                document.getElementById(
+                    "question"
+                );
 
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
 
-                    body:
-                        JSON.stringify(
-                            requestData
-                        ),
+            const subjectElement =
+                document.getElementById(
+                    "questionSubject"
+                );
 
-                    signal:
-                        controller.signal
-                }
+
+            const chapterElement =
+                document.getElementById(
+                    "questionChapter"
+                );
+
+
+            const answerElement =
+                document.getElementById(
+                    "answer"
+                );
+
+
+            const sourcesElement =
+                document.getElementById(
+                    "sources"
+                );
+
+
+            const loadingElement =
+                document.getElementById(
+                    "loading"
+                );
+
+
+            const question =
+                questionElement.value.trim();
+
+
+            const subject =
+                subjectElement.value;
+
+
+            const chapter =
+                chapterElement.value;
+
+
+            if (!question) {
+
+                answerElement.textContent =
+                    "Please enter a question.";
+
+                return;
+            }
+
+
+            loadingElement.classList.remove(
+                "hidden"
             );
 
-
-        clearTimeout(timeout);
-
-
-        console.log(
-            "Response status:",
-            response.status
-        );
-
-
-        const data =
-            await response.json();
-
-
-        console.log(
-            "Response data:",
-            data
-        );
-
-
-        if (!response.ok) {
 
             answerElement.textContent =
-                data.detail ||
-                "Something went wrong.";
+                "";
 
-            return;
-        }
-
-
-        answerElement.textContent =
-            data.answer ||
-            "No answer was returned.";
-
-
-        // ==================================
-        // DISPLAY SOURCES
-        // ==================================
-
-        if (
-            data.sources &&
-            data.sources.length > 0
-        ) {
 
             sourcesElement.textContent =
-                data.sources
-                    .map(source => {
+                "";
 
-                        return (
+
+            const requestData = {
+
+                question:
+                    question,
+
+                subject:
+                    subject || null,
+
+                chapter:
+                    chapter || null
+            };
+
+
+            console.log(
+                "Sending request:",
+                requestData
+            );
+
+
+            try {
+
+                const controller =
+                    new AbortController();
+
+
+                const timeout =
+                    setTimeout(
+                        () =>
+                            controller.abort(),
+                        120000
+                    );
+
+
+                const response =
+                    await fetch(
+                        window.location.origin +
+                        "/ask",
+                        {
+                            method: "POST",
+
+                            headers: {
+                                "Content-Type":
+                                    "application/json"
+                            },
+
+                            body:
+                                JSON.stringify(
+                                    requestData
+                                ),
+
+                            signal:
+                                controller.signal
+                        }
+                    );
+
+
+                clearTimeout(
+                    timeout
+                );
+
+
+                console.log(
+                    "Response status:",
+                    response.status
+                );
+
+
+                const data =
+                    await response.json();
+
+
+                console.log(
+                    "Response data:",
+                    data
+                );
+
+
+                if (!response.ok) {
+
+                    answerElement.textContent =
+                        data.detail ||
+                        "Something went wrong.";
+
+                    return;
+                }
+
+
+                answerElement.textContent =
+                    data.answer ||
+                    "No answer was returned.";
+
+
+                // ==================================
+                // DISPLAY SOURCES
+                // ==================================
+
+                if (
+                    data.sources &&
+                    data.sources.length > 0
+                ) {
+
+                    sourcesElement.textContent =
+                        data.sources
+                            .map(
+                                source => {
+
+                                    return (
 `File: ${source.metadata.filename}
 Subject: ${source.metadata.subject}
 Chapter: ${source.metadata.chapter}
 Content Type: ${source.metadata.content_type || "Notes"}
-Distance: ${Number(source.distance).toFixed(4)}
+Distance: ${Number(
+    source.distance
+).toFixed(4)}
 
 ${source.text}`
-                        );
+                                    );
 
-                    })
-                    .join(
-                        "\n\n-------------------------\n\n"
-                    );
+                                }
+                            )
+                            .join(
+                                "\n\n-------------------------\n\n"
+                            );
+
+                }
+
+                else {
+
+                    sourcesElement.textContent =
+                        "No sources found.";
+
+                }
+
+            }
+
+            catch (error) {
+
+                console.error(
+                    "Ask request failed:",
+                    error
+                );
+
+
+                if (
+                    error.name === "AbortError"
+                ) {
+
+                    answerElement.textContent =
+                        "⏳ The request took too long. Please try again.";
+
+                }
+
+                else {
+
+                    answerElement.textContent =
+                        "❌ Unable to connect to the server.";
+
+                }
+
+            }
+
+            finally {
+
+                loadingElement.classList.add(
+                    "hidden"
+                );
+
+            }
 
         }
 
-        else {
 
-            sourcesElement.textContent =
-                "No sources found.";
+        // ==========================================
+        // ASK BUTTON
+        // ==========================================
 
-        }
+        document
+            .getElementById(
+                "askButton"
+            )
+            .addEventListener(
+                "click",
+                askQuestion
+            );
 
-    }
 
-    catch (error) {
+        // ==========================================
+        // INITIAL PAGE LOAD
+        // ==========================================
 
-        console.error(
-            "Ask request failed:",
-            error
+        window.addEventListener(
+            "DOMContentLoaded",
+            async function() {
+
+                await loadSubjects();
+
+                await loadChapters();
+
+            }
         );
 
 
-        if (
-            error.name === "AbortError"
-        ) {
-
-            answerElement.textContent =
-                "⏳ The request took too long. Please try again.";
-
-        }
-
-        else {
-
-            answerElement.textContent =
-                "❌ Unable to connect to the server.";
-
-        }
-
-    }
-
-    finally {
-
-        loadingElement.classList.add(
-            "hidden"
-        );
-
-    }
-
-}
-
-
-
-// ==========================================
-// INITIAL PAGE LOAD
-// ==========================================
-
-document
-    .getElementById("askButton")
-    .addEventListener(
-        "click",
-        askQuestion
-    );
-
-
-window.addEventListener(
-    "DOMContentLoaded",
-    async function() {
-
-        await loadSubjects();
-
-        // Initially show only "All Chapters"
-        await loadChapters();
-
-    }
-);
-
-
-</script>
+    </script>
 
 
 </body>

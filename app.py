@@ -6,7 +6,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from document_processor import process_pdf
+from document_processor import process_file
 from rag_engine import RAGEngine
 from learning_tools import LearningTools
 
@@ -18,7 +18,7 @@ from learning_tools import LearningTools
 app = FastAPI(
     title="Subject Guide & Question Bank AI Assistant",
     description="Multi-document RAG academic learning assistant",
-    version="3.2"
+    version="3.3"
 )
 
 
@@ -96,7 +96,18 @@ def detect_content_type(filename):
 
 
 # ==========================================
-# 5. LOAD EXISTING PDFS
+# 5. SUPPORTED FILE TYPES
+# ==========================================
+
+SUPPORTED_EXTENSIONS = (
+    ".pdf",
+    ".docx",
+    ".pptx"
+)
+
+
+# ==========================================
+# 6. LOAD EXISTING DOCUMENTS
 # ==========================================
 
 def load_existing_documents():
@@ -121,18 +132,29 @@ def load_existing_documents():
         "2919.pdf": {
             "subject": "General",
             "chapter": "General"
+        },
+
+        # ==================================
+        # DISCRETE MATHEMATICS PPT
+        # ==================================
+
+        "DM UNIT3.pptx": {
+            "subject": "DM",
+            "chapter": "UNIT 3"
         }
     }
 
 
-    pdf_files = [
+    supported_files = [
         file
         for file in os.listdir(DATA_FOLDER)
-        if file.lower().endswith(".pdf")
+        if file.lower().endswith(
+            SUPPORTED_EXTENSIONS
+        )
     ]
 
 
-    for filename in pdf_files:
+    for filename in supported_files:
 
         file_path = os.path.join(
             DATA_FOLDER,
@@ -156,7 +178,7 @@ def load_existing_documents():
 
         try:
 
-            documents = process_pdf(
+            documents = process_file(
                 file_path=file_path,
                 subject=metadata["subject"],
                 chapter=metadata["chapter"]
@@ -180,7 +202,8 @@ def load_existing_documents():
                 f"Loaded: {filename} "
                 f"| Subject: {metadata['subject']} "
                 f"| Chapter: {metadata['chapter']} "
-                f"| Type: {content_type}"
+                f"| Type: {content_type} "
+                f"| Chunks: {len(documents)}"
             )
 
 
@@ -195,7 +218,7 @@ load_existing_documents()
 
 
 # ==========================================
-# 6. REQUEST MODELS
+# 7. REQUEST MODELS
 # ==========================================
 
 class Question(BaseModel):
@@ -208,10 +231,12 @@ class Question(BaseModel):
 class TopicRequest(BaseModel):
 
     topic: str
+    subject: str | None = None
+    chapter: str | None = None
 
 
 # ==========================================
-# 7. HOME PAGE
+# 8. HOME PAGE
 # ==========================================
 
 @app.get("/")
@@ -223,7 +248,7 @@ def home():
 
 
 # ==========================================
-# 8. HEALTH CHECK
+# 9. HEALTH CHECK
 # ==========================================
 
 @app.get("/health")
@@ -234,12 +259,17 @@ def health():
         "documents": rag.get_document_count(),
         "vectors": rag.get_vector_count(),
         "subjects": rag.get_subjects(),
-        "model": learning.model
+        "model": learning.model,
+        "supported_formats": [
+            "PDF",
+            "DOCX",
+            "PPTX"
+        ]
     }
 
 
 # ==========================================
-# 9. UPLOAD PDF
+# 10. UPLOAD DOCUMENT
 # ==========================================
 
 @app.post("/upload")
@@ -257,22 +287,30 @@ async def upload_document(
         )
 
 
-    if not file.filename.lower().endswith(".pdf"):
+    filename = file.filename
+
+
+    if not filename.lower().endswith(
+        SUPPORTED_EXTENSIONS
+    ):
 
         raise HTTPException(
             status_code=400,
-            detail="Only PDF files are supported currently."
+            detail=(
+                "Supported formats: "
+                "PDF, DOCX, PPTX."
+            )
         )
 
 
     file_path = os.path.join(
         DATA_FOLDER,
-        file.filename
+        filename
     )
 
 
     content_type = detect_content_type(
-        file.filename
+        filename
     )
 
 
@@ -289,7 +327,7 @@ async def upload_document(
             )
 
 
-        documents = process_pdf(
+        documents = process_file(
             file_path=file_path,
             subject=subject,
             chapter=chapter
@@ -315,7 +353,7 @@ async def upload_document(
                 "Document uploaded successfully",
 
             "filename":
-                file.filename,
+                filename,
 
             "subject":
                 subject,
@@ -346,7 +384,7 @@ async def upload_document(
 
 
 # ==========================================
-# 10. ASK QUESTION
+# 11. ASK QUESTION
 # ==========================================
 
 @app.post("/ask")
@@ -498,7 +536,7 @@ def ask_question(data: Question):
 
 
 # ==========================================
-# 11. TOPIC EXPLANATION
+# 12. TOPIC EXPLANATION
 # ==========================================
 
 @app.post("/explain")
@@ -515,16 +553,69 @@ def explain_topic(data: TopicRequest):
         )
 
 
-    results = rag.retrieve(
-        topic,
-        k=5
+    # --------------------------------------
+    # Clean optional filters
+    # --------------------------------------
+
+    subject = (
+        data.subject.strip()
+        if data.subject
+        else None
     )
 
+
+    chapter = (
+        data.chapter.strip()
+        if data.chapter
+        else None
+    )
+
+
+    # --------------------------------------
+    # Retrieve filtered material
+    # --------------------------------------
+
+    results = rag.retrieve(
+        topic,
+        k=5,
+        subject=subject,
+        chapter=chapter
+    )
+
+
+    # --------------------------------------
+    # No results
+    # --------------------------------------
+
+    if not results:
+
+        return {
+
+            "topic": topic,
+
+            "subject": subject,
+
+            "chapter": chapter,
+
+            "answer":
+                "No relevant study material was found for the selected subject/chapter.",
+
+            "sources": []
+        }
+
+
+    # --------------------------------------
+    # Build context
+    # --------------------------------------
 
     context = rag.build_context(
         results
     )
 
+
+    # --------------------------------------
+    # Generate explanation
+    # --------------------------------------
 
     answer = learning.explain_topic(
         topic,
@@ -537,6 +628,12 @@ def explain_topic(data: TopicRequest):
         "topic":
             topic,
 
+        "subject":
+            subject,
+
+        "chapter":
+            chapter,
+
         "answer":
             answer,
 
@@ -546,7 +643,7 @@ def explain_topic(data: TopicRequest):
 
 
 # ==========================================
-# 12. CONTENT SYNTHESIS
+# 13. CONTENT SYNTHESIS
 # ==========================================
 
 @app.post("/synthesize")
@@ -563,16 +660,69 @@ def synthesize_content(data: TopicRequest):
         )
 
 
-    results = rag.retrieve(
-        topic,
-        k=5
+    # --------------------------------------
+    # Clean optional filters
+    # --------------------------------------
+
+    subject = (
+        data.subject.strip()
+        if data.subject
+        else None
     )
 
+
+    chapter = (
+        data.chapter.strip()
+        if data.chapter
+        else None
+    )
+
+
+    # --------------------------------------
+    # Retrieve filtered material
+    # --------------------------------------
+
+    results = rag.retrieve(
+        topic,
+        k=5,
+        subject=subject,
+        chapter=chapter
+    )
+
+
+    # --------------------------------------
+    # No results
+    # --------------------------------------
+
+    if not results:
+
+        return {
+
+            "topic": topic,
+
+            "subject": subject,
+
+            "chapter": chapter,
+
+            "answer":
+                "No relevant study material was found for the selected subject/chapter.",
+
+            "sources": []
+        }
+
+
+    # --------------------------------------
+    # Build context
+    # --------------------------------------
 
     context = rag.build_context(
         results
     )
 
+
+    # --------------------------------------
+    # Generate synthesis
+    # --------------------------------------
 
     answer = learning.synthesize_content(
         topic,
@@ -585,6 +735,12 @@ def synthesize_content(data: TopicRequest):
         "topic":
             topic,
 
+        "subject":
+            subject,
+
+        "chapter":
+            chapter,
+
         "answer":
             answer,
 
@@ -594,7 +750,7 @@ def synthesize_content(data: TopicRequest):
 
 
 # ==========================================
-# 13. LEARNING PROGRESSION
+# 14. LEARNING PROGRESSION
 # ==========================================
 
 @app.post("/progression")
@@ -611,16 +767,69 @@ def progression(data: TopicRequest):
         )
 
 
-    results = rag.retrieve(
-        topic,
-        k=5
+    # --------------------------------------
+    # Clean optional filters
+    # --------------------------------------
+
+    subject = (
+        data.subject.strip()
+        if data.subject
+        else None
     )
 
+
+    chapter = (
+        data.chapter.strip()
+        if data.chapter
+        else None
+    )
+
+
+    # --------------------------------------
+    # Retrieve filtered material
+    # --------------------------------------
+
+    results = rag.retrieve(
+        topic,
+        k=5,
+        subject=subject,
+        chapter=chapter
+    )
+
+
+    # --------------------------------------
+    # No results
+    # --------------------------------------
+
+    if not results:
+
+        return {
+
+            "topic": topic,
+
+            "subject": subject,
+
+            "chapter": chapter,
+
+            "answer":
+                "No relevant study material was found for the selected subject/chapter.",
+
+            "sources": []
+        }
+
+
+    # --------------------------------------
+    # Build context
+    # --------------------------------------
 
     context = rag.build_context(
         results
     )
 
+
+    # --------------------------------------
+    # Generate progression
+    # --------------------------------------
 
     answer = learning.learning_progression(
         topic,
@@ -633,6 +842,12 @@ def progression(data: TopicRequest):
         "topic":
             topic,
 
+        "subject":
+            subject,
+
+        "chapter":
+            chapter,
+
         "answer":
             answer,
 
@@ -642,7 +857,7 @@ def progression(data: TopicRequest):
 
 
 # ==========================================
-# 14. LEARNING HISTORY
+# 15. LEARNING HISTORY
 # ==========================================
 
 @app.get("/history")
@@ -655,7 +870,7 @@ def get_history():
 
 
 # ==========================================
-# 15. SUBJECTS
+# 16. SUBJECTS
 # ==========================================
 
 @app.get("/subjects")
@@ -668,7 +883,7 @@ def get_subjects():
 
 
 # ==========================================
-# 16. CHAPTERS
+# 17. CHAPTERS
 # ==========================================
 
 @app.get("/chapters")
