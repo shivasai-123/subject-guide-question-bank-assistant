@@ -10,86 +10,571 @@
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>Subject Guide AI Assistant</title>
+    <title>
+        Subject Guide AI Assistant
+    </title>
 
 
     <style>
 
+        * {
+            box-sizing: border-box;
+        }
+
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+
         body {
 
-            font-family: Arial, sans-serif;
+            margin: 0;
 
-            max-width: 900px;
+            font-family:
+                Inter,
+                "Segoe UI",
+                Arial,
+                sans-serif;
 
-            margin: 40px auto;
+            background:
+                linear-gradient(
+                    135deg,
+                    #eef2ff 0%,
+                    #f8fafc 55%,
+                    #eef6ff 100%
+                );
 
-            padding: 20px;
+            color: #172033;
 
-            background: #f5f7fb;
+            min-height: 100vh;
         }
 
 
-        h1 {
+        /* ======================================
+           CONTAINER
+        ====================================== */
 
-            text-align: center;
+        .container {
+
+            width:
+                min(
+                    1200px,
+                    calc(100% - 32px)
+                );
+
+            margin: 0 auto;
+
+            padding:
+                24px 0 50px;
         }
 
+
+        /* ======================================
+           HEADER
+        ====================================== */
+
+        .header {
+
+            background: white;
+
+            border-radius: 22px;
+
+            padding:
+                30px 32px;
+
+            margin-bottom: 22px;
+
+            box-shadow:
+                0 12px 35px
+                rgba(15, 23, 42, 0.08);
+        }
+
+
+        .header-content {
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: space-between;
+
+            gap: 20px;
+        }
+
+
+        .brand h1 {
+
+            margin: 0;
+
+            font-size: 30px;
+
+            line-height: 1.2;
+        }
+
+
+        .brand p {
+
+            margin:
+                10px 0 0;
+
+            color: #64748b;
+
+            font-size: 15px;
+
+            max-width: 800px;
+        }
+
+
+        .header-badge {
+
+            padding:
+                9px 14px;
+
+            border-radius: 999px;
+
+            background: #eef2ff;
+
+            color: #4338ca;
+
+            font-size: 12px;
+
+            font-weight: 700;
+
+            white-space: nowrap;
+        }
+
+
+        /* ======================================
+           REFRESH BUTTON
+        ====================================== */
+
+        .refresh-button {
+
+            border:
+                1px solid #c7d2fe;
+
+            background: #eef2ff;
+
+            color: #4338ca;
+
+            margin-top: 18px;
+
+            padding:
+                10px 14px;
+
+            border-radius: 10px;
+
+            font-weight: 700;
+
+            cursor: pointer;
+        }
+
+
+        .refresh-button:hover {
+
+            background: #e0e7ff;
+        }
+
+
+        /* ======================================
+           DASHBOARD
+        ====================================== */
+
+        .dashboard-grid {
+
+            display: grid;
+
+            grid-template-columns:
+                repeat(4, 1fr);
+
+            gap: 16px;
+
+            margin-bottom: 24px;
+        }
+
+
+        .stat-card {
+
+            background: white;
+
+            border-radius: 18px;
+
+            padding: 22px;
+
+            box-shadow:
+                0 8px 24px
+                rgba(15, 23, 42, 0.07);
+
+            border:
+                1px solid
+                rgba(226, 232, 240, 0.8);
+        }
+
+
+        .stat-icon {
+
+            font-size: 27px;
+
+            margin-bottom: 8px;
+        }
+
+
+        .stat-title {
+
+            color: #64748b;
+
+            font-size: 14px;
+        }
+
+
+        .stat-value {
+
+            margin-top: 6px;
+
+            font-size: 30px;
+
+            font-weight: 800;
+
+            color: #172033;
+        }
+
+
+        /* ======================================
+           MAIN GRID
+        ====================================== */
+
+        .main-grid {
+
+            display: grid;
+
+            grid-template-columns:
+                1fr 1fr;
+
+            gap: 20px;
+        }
+
+
+        /* ======================================
+           CARDS
+        ====================================== */
 
         .card {
 
             background: white;
 
-            padding: 20px;
+            border-radius: 18px;
+
+            padding: 24px;
 
             margin-bottom: 20px;
 
-            border-radius: 10px;
-
             box-shadow:
-                0 2px 8px rgba(0,0,0,0.08);
+                0 8px 24px
+                rgba(15, 23, 42, 0.07);
+
+            border:
+                1px solid
+                rgba(226, 232, 240, 0.8);
+        }
+
+
+        .full-width {
+
+            grid-column:
+                1 / -1;
+        }
+
+
+        .card-header {
+
+            display: flex;
+
+            justify-content: space-between;
+
+            align-items: flex-start;
+
+            gap: 15px;
+
+            margin-bottom: 18px;
+        }
+
+
+        .card h2 {
+
+            margin: 0;
+
+            font-size: 21px;
+        }
+
+
+        .card-subtitle {
+
+            color: #64748b;
+
+            font-size: 13px;
+
+            margin-top: 5px;
+        }
+
+
+        /* ======================================
+           FORM ELEMENTS
+        ====================================== */
+
+        label {
+
+            display: block;
+
+            font-size: 14px;
+
+            font-weight: 700;
+
+            margin:
+                12px 0 6px;
         }
 
 
         input,
         textarea,
-        select,
-        button {
+        select {
 
             width: 100%;
 
-            box-sizing: border-box;
+            padding:
+                12px 14px;
 
-            padding: 10px;
+            border:
+                1px solid #cbd5e1;
 
-            margin-top: 8px;
+            border-radius: 10px;
 
-            margin-bottom: 12px;
+            background: #f8fafc;
 
-            border-radius: 6px;
+            color: #172033;
 
-            border: 1px solid #ccc;
+            font-size: 14px;
+
+            outline: none;
+
+            transition:
+                border-color .2s,
+                box-shadow .2s;
         }
 
 
+        input:focus,
+        textarea:focus,
+        select:focus {
+
+            border-color: #6366f1;
+
+            box-shadow:
+                0 0 0 3px
+                rgba(99, 102, 241, .12);
+
+            background: white;
+        }
+
+
+        textarea {
+
+            min-height: 125px;
+
+            resize: vertical;
+        }
+
+
+        /* ======================================
+           BUTTONS
+        ====================================== */
+
         button {
+
+            border: none;
+
+            border-radius: 10px;
+
+            padding:
+                12px 18px;
+
+            font-size: 14px;
+
+            font-weight: 700;
 
             cursor: pointer;
 
-            font-weight: bold;
+            transition:
+                transform .15s,
+                opacity .15s,
+                background .15s;
         }
 
 
         button:hover {
 
-            background: #eeeeee;
+            transform:
+                translateY(-1px);
         }
 
 
-        select:disabled {
+        button:disabled {
 
-            background: #eeeeee;
+            opacity: .6;
 
             cursor: not-allowed;
+
+            transform: none;
+        }
+
+
+        .primary-button {
+
+            width: 100%;
+
+            margin-top: 12px;
+
+            background: #4f46e5;
+
+            color: white;
+        }
+
+
+        .primary-button:hover {
+
+            background: #4338ca;
+        }
+
+
+        .secondary-button {
+
+            background: #e2e8f0;
+
+            color: #1e293b;
+        }
+
+
+        .copy-button {
+
+            padding:
+                8px 12px;
+
+            background: #eef2ff;
+
+            color: #4338ca;
+
+            font-size: 12px;
+        }
+
+
+        /* ======================================
+           UPLOAD BOX
+        ====================================== */
+
+        .upload-box {
+
+            border:
+                2px dashed #c7d2fe;
+
+            background: #eef2ff;
+
+            border-radius: 14px;
+
+            padding: 18px;
+
+            margin-bottom: 16px;
+        }
+
+
+        .upload-box strong {
+
+            display: block;
+
+            margin-bottom: 5px;
+        }
+
+
+        .upload-box span {
+
+            color: #64748b;
+
+            font-size: 13px;
+        }
+
+
+        /* ======================================
+           STATUS
+        ====================================== */
+
+        .status {
+
+            display: none;
+
+            padding:
+                10px 12px;
+
+            margin-top: 12px;
+
+            border-radius: 10px;
+
+            font-size: 13px;
+        }
+
+
+        .status.show {
+
+            display: block;
+        }
+
+
+        .status.success {
+
+            background: #dcfce7;
+
+            color: #166534;
+        }
+
+
+        .status.error {
+
+            background: #fee2e2;
+
+            color: #991b1b;
+        }
+
+
+        .status.info {
+
+            background: #dbeafe;
+
+            color: #1e40af;
+        }
+
+
+        /* ======================================
+           ANSWER
+        ====================================== */
+
+        #loading {
+
+            padding:
+                12px 14px;
+
+            margin-bottom: 14px;
+
+            border-radius: 10px;
+
+            background: #eef2ff;
+
+            color: #4338ca;
+
+            font-size: 14px;
+        }
+
+
+        .hidden {
+
+            display: none !important;
         }
 
 
@@ -97,41 +582,389 @@
 
             white-space: pre-wrap;
 
+            line-height: 1.75;
+
+            font-size: 15px;
+
+            color: #334155;
+
+            min-height: 110px;
+
+            padding:
+                4px 0;
+        }
+
+
+        /* ======================================
+           DOCUMENT BROWSER
+        ====================================== */
+
+        .browser-controls {
+
+            display: grid;
+
+            grid-template-columns:
+                1fr 1fr 2fr;
+
+            gap: 12px;
+
+            margin-bottom: 14px;
+        }
+
+
+        .browser-bottom-row {
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: space-between;
+
+            gap: 12px;
+
+            margin-bottom: 18px;
+        }
+
+
+        .document-count-label {
+
+            color: #64748b;
+
+            font-size: 13px;
+        }
+
+
+        .missing-toggle {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 8px;
+
+            color: #475569;
+
+            font-size: 13px;
+
+            cursor: pointer;
+        }
+
+
+        .missing-toggle input {
+
+            width: auto;
+
+            margin: 0;
+        }
+
+
+        .documents-grid {
+
+            display: grid;
+
+            grid-template-columns:
+                repeat(2, 1fr);
+
+            gap: 14px;
+        }
+
+
+        .document-card {
+
+            padding: 18px;
+
+            border:
+                1px solid #e2e8f0;
+
+            border-radius: 14px;
+
+            background: #f8fafc;
+
+            transition:
+                transform .15s,
+                box-shadow .15s,
+                border-color .15s;
+        }
+
+
+        .document-card:hover {
+
+            transform:
+                translateY(-2px);
+
+            box-shadow:
+                0 8px 20px
+                rgba(15, 23, 42, .06);
+
+            border-color: #c7d2fe;
+        }
+
+
+        .clickable-document {
+
+            cursor: pointer;
+        }
+
+
+        .document-name {
+
+            font-size: 15px;
+
+            font-weight: 800;
+
+            line-height: 1.4;
+
+            margin-bottom: 10px;
+
+            word-break: break-word;
+        }
+
+
+        .document-meta {
+
+            display: flex;
+
+            flex-wrap: wrap;
+
+            gap: 7px;
+
+            margin-bottom: 11px;
+        }
+
+
+        .badge {
+
+            padding:
+                5px 9px;
+
+            background: #e2e8f0;
+
+            border-radius: 999px;
+
+            color: #334155;
+
+            font-size: 11px;
+
+            font-weight: 700;
+        }
+
+
+        .badge.status-available {
+
+            background: #dcfce7;
+
+            color: #166534;
+        }
+
+
+        .badge.status-missing {
+
+            background: #fee2e2;
+
+            color: #991b1b;
+        }
+
+
+        .document-info {
+
+            color: #64748b;
+
+            font-size: 12px;
+
+            line-height: 1.7;
+        }
+
+
+        .empty-state {
+
+            padding: 35px;
+
+            text-align: center;
+
+            color: #64748b;
+
+            background: #f8fafc;
+
+            border-radius: 14px;
+
+            border:
+                1px dashed #cbd5e1;
+        }
+
+
+        /* ======================================
+           SOURCES
+        ====================================== */
+
+        #sources {
+
+            display: grid;
+
+            gap: 12px;
+        }
+
+
+        .source-card {
+
+            border:
+                1px solid #e2e8f0;
+
+            border-radius: 14px;
+
+            padding: 16px;
+
+            background: #f8fafc;
+        }
+
+
+        .source-header {
+
+            display: flex;
+
+            justify-content: space-between;
+
+            align-items: flex-start;
+
+            gap: 12px;
+
+            margin-bottom: 8px;
+        }
+
+
+        .source-title {
+
+            font-weight: 800;
+
+            line-height: 1.4;
+        }
+
+
+        .source-meta {
+
+            color: #64748b;
+
+            font-size: 12px;
+
+            line-height: 1.7;
+
+            margin-bottom: 10px;
+        }
+
+
+        .source-text {
+
+            white-space: pre-wrap;
+
+            color: #334155;
+
+            font-size: 13px;
+
             line-height: 1.6;
         }
 
 
-        #sources {
+        /* ======================================
+           FOOTER
+        ====================================== */
 
-            white-space: pre-wrap;
+        .footer {
 
-            font-size: 14px;
+            text-align: center;
 
-            line-height: 1.5;
+            color: #94a3b8;
+
+            font-size: 12px;
+
+            margin-top: 8px;
         }
 
 
-        .hidden {
+        /* ======================================
+           RESPONSIVE
+        ====================================== */
 
-            display: none;
+        @media (max-width: 950px) {
+
+            .dashboard-grid {
+
+                grid-template-columns:
+                    repeat(2, 1fr);
+            }
+
+
+            .main-grid {
+
+                grid-template-columns:
+                    1fr;
+            }
+
+
+            .documents-grid {
+
+                grid-template-columns:
+                    1fr;
+            }
+
         }
 
 
-        .status {
+        @media (max-width: 700px) {
 
-            margin-top: 10px;
+            .header-content {
 
-            font-weight: bold;
+                flex-direction: column;
+
+                align-items: flex-start;
+            }
+
+
+            .browser-controls {
+
+                grid-template-columns:
+                    1fr;
+            }
+
+
+            .browser-bottom-row {
+
+                flex-direction: column;
+
+                align-items: flex-start;
+            }
+
         }
 
 
-        .supported-formats {
+        @media (max-width: 520px) {
 
-            font-size: 14px;
+            .dashboard-grid {
 
-            color: #666;
+                grid-template-columns:
+                    1fr;
+            }
 
-            margin-bottom: 12px;
+
+            .container {
+
+                width:
+                    calc(100% - 18px);
+
+                padding-top: 10px;
+            }
+
+
+            .header,
+            .card {
+
+                padding: 18px;
+            }
+
+
+            .brand h1 {
+
+                font-size: 24px;
+            }
+
         }
 
     </style>
@@ -141,136 +974,346 @@
 
 <body>
 
-
-    <h1>📚 Subject Guide AI Assistant</h1>
-
-
-    <!-- ========================================== -->
-    <!-- DOCUMENT UPLOAD -->
-    <!-- ========================================== -->
-
-    <div class="card">
-
-        <h2>📄 Upload Study Material</h2>
-
-        <p class="supported-formats">
-            Supported formats: PDF, DOCX, PPTX
-        </p>
+<div class="container">
 
 
-        <label>Select Study Material:</label>
+    <!-- ======================================
+         HEADER
+    ====================================== -->
 
-        <input
-            type="file"
-            id="fileInput"
-            accept=".pdf,.docx,.pptx"
-        >
+    <div class="header">
+
+        <div class="header-content">
+
+            <div class="brand">
+
+                <h1>
+                    🎓 Subject Guide & Question Bank AI Assistant
+                </h1>
+
+                <p>
+                    A multi-document academic learning assistant
+                    for notes, textbooks, lab material,
+                    presentations and question banks.
+                </p>
+
+            </div>
 
 
-        <label>Subject:</label>
+            <div class="header-badge">
+                RAG • FAISS • Ollama
+            </div>
 
-        <input
-            type="text"
-            id="subjectInput"
-            placeholder="Example: Python"
-        >
-
-
-        <label>Chapter:</label>
-
-        <input
-            type="text"
-            id="chapterInput"
-            placeholder="Example: Functions"
-        >
+        </div>
 
 
         <button
+            id="refreshButton"
+            class="refresh-button"
             type="button"
-            onclick="uploadDocument()"
         >
-            Upload Document
-        </button>
-
-
-        <div
-            id="uploadStatus"
-            class="status"
-        ></div>
-
-    </div>
-
-
-    <!-- ========================================== -->
-    <!-- ASK QUESTION -->
-    <!-- ========================================== -->
-
-    <div class="card">
-
-        <h2>❓ Ask a Question</h2>
-
-
-        <label>Subject:</label>
-
-        <select
-            id="questionSubject"
-            onchange="loadChapters()"
-        >
-
-            <option value="">
-                All Subjects
-            </option>
-
-        </select>
-
-
-        <label>Chapter:</label>
-
-        <select
-            id="questionChapter"
-            disabled
-        >
-
-            <option value="">
-                All Chapters
-            </option>
-
-        </select>
-
-
-        <label>Question:</label>
-
-        <textarea
-            id="question"
-            rows="5"
-            placeholder="Example: What is Python?"
-        ></textarea>
-
-
-        <button
-            type="button"
-            id="askButton"
-        >
-            Ask Question
+            🔄 Refresh Dashboard
         </button>
 
     </div>
 
 
-    <!-- ========================================== -->
-    <!-- ANSWER -->
-    <!-- ========================================== -->
+    <!-- ======================================
+         DASHBOARD
+    ====================================== -->
+
+    <div class="dashboard-grid">
+
+        <div class="stat-card">
+
+            <div class="stat-icon">
+                📚
+            </div>
+
+            <div class="stat-title">
+                Documents
+            </div>
+
+            <div
+                id="documentCount"
+                class="stat-value"
+            >
+                -
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-icon">
+                🧩
+            </div>
+
+            <div class="stat-title">
+                Vectors
+            </div>
+
+            <div
+                id="vectorCount"
+                class="stat-value"
+            >
+                -
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-icon">
+                📖
+            </div>
+
+            <div class="stat-title">
+                Subjects
+            </div>
+
+            <div
+                id="subjectCount"
+                class="stat-value"
+            >
+                -
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-icon">
+                📝
+            </div>
+
+            <div class="stat-title">
+                Question Banks
+            </div>
+
+            <div
+                id="questionBankCount"
+                class="stat-value"
+            >
+                -
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- ======================================
+         MAIN GRID
+    ====================================== -->
+
+    <div class="main-grid">
+
+
+        <!-- ==================================
+             UPLOAD
+        ================================== -->
+
+        <div class="card">
+
+            <div class="card-header">
+
+                <div>
+
+                    <h2>
+                        📄 Upload Study Material
+                    </h2>
+
+                    <div class="card-subtitle">
+                        Add academic content to the
+                        knowledge base.
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div class="upload-box">
+
+                <strong>
+                    📎 Supported formats
+                </strong>
+
+                <span>
+                    PDF • DOCX • PPTX
+                </span>
+
+            </div>
+
+
+            <label>
+                Select Document
+            </label>
+
+            <input
+                type="file"
+                id="fileInput"
+                accept=".pdf,.docx,.pptx"
+            >
+
+
+            <label>
+                Subject
+            </label>
+
+            <input
+                type="text"
+                id="subjectInput"
+                placeholder="Example: DM"
+            >
+
+
+            <label>
+                Chapter
+            </label>
+
+            <input
+                type="text"
+                id="chapterInput"
+                placeholder="Example: UNIT 3"
+            >
+
+
+            <button
+                id="uploadButton"
+                class="primary-button"
+                type="button"
+            >
+                📤 Upload Document
+            </button>
+
+
+            <div
+                id="uploadStatus"
+                class="status"
+            ></div>
+
+        </div>
+
+
+        <!-- ==================================
+             ASK QUESTION
+        ================================== -->
+
+        <div class="card">
+
+            <div class="card-header">
+
+                <div>
+
+                    <h2>
+                        ❓ Ask a Question
+                    </h2>
+
+                    <div class="card-subtitle">
+                        Choose a subject and chapter
+                        for focused retrieval.
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <label>
+                Subject
+            </label>
+
+            <select id="questionSubject">
+
+                <option value="">
+                    All Subjects
+                </option>
+
+            </select>
+
+
+            <label>
+                Chapter
+            </label>
+
+            <select
+                id="questionChapter"
+                disabled
+            >
+
+                <option value="">
+                    All Chapters
+                </option>
+
+            </select>
+
+
+            <label>
+                Question
+            </label>
+
+            <textarea
+                id="question"
+                placeholder="Example: What is permutation?"
+            ></textarea>
+
+
+            <button
+                id="askButton"
+                class="primary-button"
+                type="button"
+            >
+                🤖 Ask Question
+            </button>
+
+        </div>
+
+
+    </div>
+
+
+    <!-- ======================================
+         ANSWER
+    ====================================== -->
 
     <div class="card">
 
-        <h2>💡 Answer</h2>
+        <div class="card-header">
+
+            <div>
+
+                <h2>
+                    💡 Answer
+                </h2>
+
+                <div class="card-subtitle">
+                    Generated from the retrieved study material.
+                </div>
+
+            </div>
+
+
+            <button
+                id="copyButton"
+                class="copy-button"
+                type="button"
+            >
+                📋 Copy
+            </button>
+
+        </div>
 
 
         <div
             id="loading"
             class="hidden"
         >
-            Generating answer...
+            ⏳ Generating answer from your study material...
         </div>
 
 
@@ -281,677 +1324,1573 @@
     </div>
 
 
-    <!-- ========================================== -->
-    <!-- RETRIEVED SOURCES -->
-    <!-- ========================================== -->
+    <!-- ======================================
+         DOCUMENT BROWSER
+    ====================================== -->
 
-    <div class="card">
+    <div class="card full-width">
 
-        <h2>📚 Retrieved Sources</h2>
+        <div class="card-header">
+
+            <div>
+
+                <h2>
+                    📚 Document Browser
+                </h2>
+
+                <div class="card-subtitle">
+                    Browse academic material by subject,
+                    content type and filename.
+                </div>
+
+            </div>
+
+        </div>
 
 
-        <div id="sources">
-            Sources will appear here.
+        <div class="browser-controls">
+
+            <select
+                id="documentSubjectFilter"
+            >
+
+                <option value="">
+                    All Subjects
+                </option>
+
+            </select>
+
+
+            <select
+                id="documentTypeFilter"
+            >
+
+                <option value="">
+                    All Content Types
+                </option>
+
+                <option value="Notes">
+                    Notes
+                </option>
+
+                <option value="Question Bank">
+                    Question Bank
+                </option>
+
+                <option value="Lab Manual">
+                    Lab Manual
+                </option>
+
+                <option value="Textbook">
+                    Textbook
+                </option>
+
+            </select>
+
+
+            <input
+                type="text"
+                id="documentSearch"
+                placeholder="Search documents..."
+            >
+
+        </div>
+
+
+        <div class="browser-bottom-row">
+
+            <div
+                id="documentResultCount"
+                class="document-count-label"
+            >
+                Loading documents...
+            </div>
+
+
+            <label class="missing-toggle">
+
+                <input
+                    type="checkbox"
+                    id="showMissing"
+                >
+
+                Show missing files
+
+            </label>
+
+        </div>
+
+
+        <div
+            id="documentsGrid"
+            class="documents-grid"
+        >
         </div>
 
     </div>
 
 
-    <script>
+    <!-- ======================================
+         RETRIEVED SOURCES
+    ====================================== -->
 
+    <div class="card">
 
-        // ==========================================
-        // LOAD SUBJECTS
-        // ==========================================
+        <div class="card-header">
 
-        async function loadSubjects() {
+            <div>
 
-            try {
+                <h2>
+                    📖 Retrieved Sources
+                </h2>
 
-                const response =
-                    await fetch("/subjects");
+                <div class="card-subtitle">
+                    Materials used to generate the answer.
+                </div>
 
+            </div>
 
-                const data =
-                    await response.json();
+        </div>
 
 
-                const subjectSelect =
-                    document.getElementById(
-                        "questionSubject"
-                    );
+        <div id="sources">
 
+            <div class="empty-state">
+                No sources yet.
+            </div>
 
-                subjectSelect.innerHTML = `
-                    <option value="">
-                        All Subjects
-                    </option>
-                `;
+        </div>
 
+    </div>
 
-                data.subjects.forEach(
-                    subject => {
 
-                        const option =
-                            document.createElement(
-                                "option"
-                            );
+    <!-- ======================================
+         FOOTER
+    ====================================== -->
 
+    <div class="footer">
 
-                        option.value =
-                            subject;
+        Subject Guide AI Assistant •
+        Multi-document RAG Academic Learning System
 
+    </div>
 
-                        option.textContent =
-                            subject;
 
+</div>
 
-                        subjectSelect.appendChild(
-                            option
-                        );
 
-                    }
-                );
+<script>
 
-            }
 
-            catch (error) {
+// ==========================================
+// GLOBAL DATA
+// ==========================================
 
-                console.error(
-                    "Could not load subjects:",
-                    error
-                );
+let allDocuments = [];
 
-            }
 
-        }
+// ==========================================
+// HELPER - ESCAPE HTML
+// ==========================================
 
+function escapeHtml(value) {
 
-        // ==========================================
-        // LOAD CHAPTERS
-        // ==========================================
+    const div =
+        document.createElement("div");
 
-        async function loadChapters() {
+    div.textContent =
+        value ?? "";
 
-            const subject =
-                document.getElementById(
-                    "questionSubject"
-                ).value;
+    return div.innerHTML;
+}
 
 
-            const chapterSelect =
-                document.getElementById(
-                    "questionChapter"
-                );
+// ==========================================
+// HELPER - FORMAT BYTES
+// ==========================================
 
+function formatBytes(bytes) {
 
-            // --------------------------------------
-            // ALL SUBJECTS
-            // --------------------------------------
+    if (!bytes || bytes <= 0) {
 
-            if (!subject) {
+        return "0 Bytes";
+    }
 
-                chapterSelect.innerHTML = `
-                    <option value="">
-                        All Chapters
-                    </option>
-                `;
 
+    const units = [
+        "Bytes",
+        "KB",
+        "MB",
+        "GB"
+    ];
 
-                chapterSelect.disabled =
-                    true;
 
+    const index =
+        Math.floor(
+            Math.log(bytes) /
+            Math.log(1024)
+        );
 
-                return;
-            }
 
+    const size =
+        bytes /
+        Math.pow(
+            1024,
+            index
+        );
 
-            // --------------------------------------
-            // SUBJECT SELECTED
-            // --------------------------------------
 
-            chapterSelect.disabled =
-                false;
+    return (
+        size.toFixed(2) +
+        " " +
+        units[index]
+    );
+}
 
 
-            chapterSelect.innerHTML = `
-                <option value="">
-                    Loading chapters...
-                </option>
-            `;
+// ==========================================
+// LOAD DASHBOARD
+// ==========================================
 
+async function loadDashboard() {
 
-            try {
+    try {
 
-                const url =
-                    "/chapters?subject=" +
-                    encodeURIComponent(
-                        subject
-                    );
+        const healthResponse =
+            await fetch("/health");
 
 
-                const response =
-                    await fetch(url);
+        const healthData =
+            await healthResponse.json();
 
 
-                const data =
-                    await response.json();
+        document.getElementById(
+            "vectorCount"
+        ).textContent =
+            healthData.vectors ?? 0;
 
 
-                chapterSelect.innerHTML = `
-                    <option value="">
-                        All Chapters
-                    </option>
-                `;
+        const documentsResponse =
+            await fetch("/documents");
 
 
-                data.chapters.forEach(
-                    chapter => {
+        const documentsData =
+            await documentsResponse.json();
 
-                        const option =
-                            document.createElement(
-                                "option"
-                            );
 
+        allDocuments =
+            documentsData.documents || [];
 
-                        option.value =
-                            chapter;
 
+        document.getElementById(
+            "documentCount"
+        ).textContent =
+            allDocuments.length;
 
-                        option.textContent =
-                            chapter;
 
+        const subjects = [
+            ...new Set(
+                allDocuments
+                    .map(
+                        doc => doc.subject
+                    )
+                    .filter(Boolean)
+            )
+        ];
 
-                        chapterSelect.appendChild(
-                            option
-                        );
 
-                    }
-                );
+        document.getElementById(
+            "subjectCount"
+        ).textContent =
+            subjects.length;
 
-            }
 
-            catch (error) {
-
-                console.error(
-                    "Could not load chapters:",
-                    error
-                );
-
-
-                chapterSelect.innerHTML = `
-                    <option value="">
-                        Could not load chapters
-                    </option>
-                `;
-
-            }
-
-        }
-
-
-        // ==========================================
-        // UPLOAD DOCUMENT
-        // ==========================================
-
-        async function uploadDocument() {
-
-            const fileInput =
-                document.getElementById(
-                    "fileInput"
-                );
-
-
-            const subject =
-                document.getElementById(
-                    "subjectInput"
-                ).value.trim();
-
-
-            const chapter =
-                document.getElementById(
-                    "chapterInput"
-                ).value.trim();
-
-
-            const status =
-                document.getElementById(
-                    "uploadStatus"
-                );
-
-
-            if (!fileInput.files.length) {
-
-                status.textContent =
-                    "Please select a PDF, DOCX, or PPTX file.";
-
-                return;
-            }
-
-
-            if (!subject) {
-
-                status.textContent =
-                    "Please enter a subject.";
-
-                return;
-            }
-
-
-            if (!chapter) {
-
-                status.textContent =
-                    "Please enter a chapter.";
-
-                return;
-            }
-
-
-            const selectedFile =
-                fileInput.files[0];
-
-
-            const allowedExtensions = [
-                ".pdf",
-                ".docx",
-                ".pptx"
-            ];
-
-
-            const filename =
-                selectedFile.name.toLowerCase();
-
-
-            const validFile =
-                allowedExtensions.some(
-                    extension =>
-                        filename.endsWith(
-                            extension
-                        )
-                );
-
-
-            if (!validFile) {
-
-                status.textContent =
-                    "Only PDF, DOCX, and PPTX files are supported.";
-
-                return;
-            }
-
-
-            const formData =
-                new FormData();
-
-
-            formData.append(
-                "file",
-                selectedFile
+        const questionBanks =
+            allDocuments.filter(
+                doc =>
+                    doc.content_type ===
+                    "Question Bank"
             );
 
 
-            formData.append(
-                "subject",
-                subject
+        document.getElementById(
+            "questionBankCount"
+        ).textContent =
+            questionBanks.length;
+
+
+        renderDocuments();
+
+    }
+    catch (error) {
+
+        console.error(
+            "Dashboard loading failed:",
+            error
+        );
+
+    }
+
+}
+
+
+// ==========================================
+// LOAD SUBJECTS
+// ==========================================
+
+async function loadSubjects() {
+
+    try {
+
+        const response =
+            await fetch("/subjects");
+
+
+        const data =
+            await response.json();
+
+
+        const questionSubject =
+            document.getElementById(
+                "questionSubject"
             );
 
 
-            formData.append(
-                "chapter",
-                chapter
+        const documentSubjectFilter =
+            document.getElementById(
+                "documentSubjectFilter"
             );
 
 
-            status.textContent =
-                "Uploading...";
+        questionSubject.innerHTML = `
+            <option value="">
+                All Subjects
+            </option>
+        `;
 
 
-            try {
+        documentSubjectFilter.innerHTML = `
+            <option value="">
+                All Subjects
+            </option>
+        `;
 
-                const response =
-                    await fetch(
-                        "/upload",
-                        {
-                            method: "POST",
-                            body: formData
-                        }
+
+        (data.subjects || []).forEach(
+            subject => {
+
+                const option =
+                    document.createElement(
+                        "option"
                     );
 
 
-                const data =
-                    await response.json();
+                option.value =
+                    subject;
 
 
-                if (!response.ok) {
+                option.textContent =
+                    subject;
 
-                    status.textContent =
-                        data.detail ||
-                        "Upload failed.";
 
-                    return;
+                questionSubject.appendChild(
+                    option
+                );
+
+
+                const filterOption =
+                    document.createElement(
+                        "option"
+                    );
+
+
+                filterOption.value =
+                    subject;
+
+
+                filterOption.textContent =
+                    subject;
+
+
+                documentSubjectFilter.appendChild(
+                    filterOption
+                );
+
+            }
+        );
+
+    }
+    catch (error) {
+
+        console.error(
+            "Could not load subjects:",
+            error
+        );
+
+    }
+
+}
+
+
+// ==========================================
+// LOAD CHAPTERS
+// ==========================================
+
+async function loadChapters() {
+
+    const subject =
+        document.getElementById(
+            "questionSubject"
+        ).value;
+
+
+    const chapterSelect =
+        document.getElementById(
+            "questionChapter"
+        );
+
+
+    if (!subject) {
+
+        chapterSelect.innerHTML = `
+            <option value="">
+                All Chapters
+            </option>
+        `;
+
+
+        chapterSelect.disabled =
+            true;
+
+
+        return;
+    }
+
+
+    chapterSelect.disabled =
+        false;
+
+
+    chapterSelect.innerHTML = `
+        <option value="">
+            Loading chapters...
+        </option>
+    `;
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/chapters?subject=" +
+                encodeURIComponent(subject)
+            );
+
+
+        const data =
+            await response.json();
+
+
+        chapterSelect.innerHTML = `
+            <option value="">
+                All Chapters
+            </option>
+        `;
+
+
+        (data.chapters || []).forEach(
+            chapter => {
+
+                const option =
+                    document.createElement(
+                        "option"
+                    );
+
+
+                option.value =
+                    chapter;
+
+
+                option.textContent =
+                    chapter;
+
+
+                chapterSelect.appendChild(
+                    option
+                );
+
+            }
+        );
+
+    }
+    catch (error) {
+
+        console.error(
+            "Could not load chapters:",
+            error
+        );
+
+
+        chapterSelect.innerHTML = `
+            <option value="">
+                Could not load chapters
+            </option>
+        `;
+
+    }
+
+}
+
+
+// ==========================================
+// UPLOAD DOCUMENT
+// ==========================================
+
+async function uploadDocument() {
+
+    const fileInput =
+        document.getElementById(
+            "fileInput"
+        );
+
+
+    const subject =
+        document.getElementById(
+            "subjectInput"
+        ).value.trim();
+
+
+    const chapter =
+        document.getElementById(
+            "chapterInput"
+        ).value.trim();
+
+
+    const status =
+        document.getElementById(
+            "uploadStatus"
+        );
+
+
+    const uploadButton =
+        document.getElementById(
+            "uploadButton"
+        );
+
+
+    if (!fileInput.files.length) {
+
+        showStatus(
+            status,
+            "Please select a PDF, DOCX or PPTX file.",
+            "error"
+        );
+
+        return;
+    }
+
+
+    if (!subject) {
+
+        showStatus(
+            status,
+            "Please enter a subject.",
+            "error"
+        );
+
+        return;
+    }
+
+
+    if (!chapter) {
+
+        showStatus(
+            status,
+            "Please enter a chapter.",
+            "error"
+        );
+
+        return;
+    }
+
+
+    const selectedFile =
+        fileInput.files[0];
+
+
+    const formData =
+        new FormData();
+
+
+    formData.append(
+        "file",
+        selectedFile
+    );
+
+
+    formData.append(
+        "subject",
+        subject
+    );
+
+
+    formData.append(
+        "chapter",
+        chapter
+    );
+
+
+    uploadButton.disabled =
+        true;
+
+
+    showStatus(
+        status,
+        "⏳ Uploading and processing document...",
+        "info"
+    );
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/upload",
+                {
+                    method: "POST",
+                    body: formData
                 }
+            );
 
 
-                status.textContent =
-                    "✅ Uploaded successfully: " +
-                    data.filename +
-                    " | Type: " +
-                    data.content_type +
-                    " | Subject: " +
-                    data.subject +
-                    " | Chapter: " +
-                    data.chapter +
-                    " | Chunks: " +
-                    data.chunks_added;
+        const data =
+            await response.json();
 
 
-                await loadSubjects();
+        if (!response.ok) {
 
-                await loadChapters();
+            showStatus(
+                status,
+                data.detail ||
+                "Upload failed.",
+                "error"
+            );
 
-
-                fileInput.value = "";
-
-            }
-
-            catch (error) {
-
-                status.textContent =
-                    "❌ Error connecting to server.";
-
-                console.error(
-                    error
-                );
-
-            }
-
+            return;
         }
 
 
-        // ==========================================
-        // ASK QUESTION
-        // ==========================================
+        showStatus(
+            status,
+            "✅ " +
+            data.filename +
+            " uploaded successfully. " +
+            data.chunks_added +
+            " chunks added.",
+            "success"
+        );
 
-        async function askQuestion() {
 
-            console.log(
-                "Ask Question button clicked"
+        fileInput.value =
+            "";
+
+
+        await refreshApplication();
+
+    }
+    catch (error) {
+
+        console.error(
+            "Upload error:",
+            error
+        );
+
+
+        showStatus(
+            status,
+            "❌ Could not connect to the server.",
+            "error"
+        );
+
+    }
+    finally {
+
+        uploadButton.disabled =
+            false;
+
+    }
+
+}
+
+
+// ==========================================
+// STATUS HELPER
+// ==========================================
+
+function showStatus(
+    element,
+    message,
+    type
+) {
+
+    element.textContent =
+        message;
+
+
+    element.className =
+        "status show " +
+        type;
+
+}
+
+
+// ==========================================
+// ASK QUESTION
+// ==========================================
+
+async function askQuestion() {
+
+    const questionElement =
+        document.getElementById(
+            "question"
+        );
+
+
+    const subjectElement =
+        document.getElementById(
+            "questionSubject"
+        );
+
+
+    const chapterElement =
+        document.getElementById(
+            "questionChapter"
+        );
+
+
+    const answerElement =
+        document.getElementById(
+            "answer"
+        );
+
+
+    const sourcesElement =
+        document.getElementById(
+            "sources"
+        );
+
+
+    const loadingElement =
+        document.getElementById(
+            "loading"
+        );
+
+
+    const askButton =
+        document.getElementById(
+            "askButton"
+        );
+
+
+    const question =
+        questionElement.value.trim();
+
+
+    const subject =
+        subjectElement.value;
+
+
+    const chapter =
+        chapterElement.value;
+
+
+    if (!question) {
+
+        answerElement.textContent =
+            "Please enter a question.";
+
+        return;
+    }
+
+
+    askButton.disabled =
+        true;
+
+
+    loadingElement.classList.remove(
+        "hidden"
+    );
+
+
+    answerElement.textContent =
+        "";
+
+
+    sourcesElement.innerHTML =
+        "";
+
+
+    const requestData = {
+
+        question:
+            question,
+
+        subject:
+            subject || null,
+
+        chapter:
+            chapter || null
+
+    };
+
+
+    try {
+
+        const controller =
+            new AbortController();
+
+
+        const timeout =
+            setTimeout(
+                () =>
+                    controller.abort(),
+                120000
             );
 
 
-            const questionElement =
-                document.getElementById(
-                    "question"
-                );
+        const response =
+            await fetch(
+                "/ask",
+                {
+                    method: "POST",
 
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
 
-            const subjectElement =
-                document.getElementById(
-                    "questionSubject"
-                );
+                    body:
+                        JSON.stringify(
+                            requestData
+                        ),
 
-
-            const chapterElement =
-                document.getElementById(
-                    "questionChapter"
-                );
-
-
-            const answerElement =
-                document.getElementById(
-                    "answer"
-                );
-
-
-            const sourcesElement =
-                document.getElementById(
-                    "sources"
-                );
-
-
-            const loadingElement =
-                document.getElementById(
-                    "loading"
-                );
-
-
-            const question =
-                questionElement.value.trim();
-
-
-            const subject =
-                subjectElement.value;
-
-
-            const chapter =
-                chapterElement.value;
-
-
-            if (!question) {
-
-                answerElement.textContent =
-                    "Please enter a question.";
-
-                return;
-            }
-
-
-            loadingElement.classList.remove(
-                "hidden"
+                    signal:
+                        controller.signal
+                }
             );
 
+
+        clearTimeout(timeout);
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok) {
 
             answerElement.textContent =
-                "";
+                data.detail ||
+                "Something went wrong.";
 
-
-            sourcesElement.textContent =
-                "";
-
-
-            const requestData = {
-
-                question:
-                    question,
-
-                subject:
-                    subject || null,
-
-                chapter:
-                    chapter || null
-            };
-
-
-            console.log(
-                "Sending request:",
-                requestData
-            );
-
-
-            try {
-
-                const controller =
-                    new AbortController();
-
-
-                const timeout =
-                    setTimeout(
-                        () =>
-                            controller.abort(),
-                        120000
-                    );
-
-
-                const response =
-                    await fetch(
-                        window.location.origin +
-                        "/ask",
-                        {
-                            method: "POST",
-
-                            headers: {
-                                "Content-Type":
-                                    "application/json"
-                            },
-
-                            body:
-                                JSON.stringify(
-                                    requestData
-                                ),
-
-                            signal:
-                                controller.signal
-                        }
-                    );
-
-
-                clearTimeout(
-                    timeout
-                );
-
-
-                console.log(
-                    "Response status:",
-                    response.status
-                );
-
-
-                const data =
-                    await response.json();
-
-
-                console.log(
-                    "Response data:",
-                    data
-                );
-
-
-                if (!response.ok) {
-
-                    answerElement.textContent =
-                        data.detail ||
-                        "Something went wrong.";
-
-                    return;
-                }
-
-
-                answerElement.textContent =
-                    data.answer ||
-                    "No answer was returned.";
-
-
-                // ==================================
-                // DISPLAY SOURCES
-                // ==================================
-
-                if (
-                    data.sources &&
-                    data.sources.length > 0
-                ) {
-
-                    sourcesElement.textContent =
-                        data.sources
-                            .map(
-                                source => {
-
-                                    return (
-`File: ${source.metadata.filename}
-Subject: ${source.metadata.subject}
-Chapter: ${source.metadata.chapter}
-Content Type: ${source.metadata.content_type || "Notes"}
-Distance: ${Number(
-    source.distance
-).toFixed(4)}
-
-${source.text}`
-                                    );
-
-                                }
-                            )
-                            .join(
-                                "\n\n-------------------------\n\n"
-                            );
-
-                }
-
-                else {
-
-                    sourcesElement.textContent =
-                        "No sources found.";
-
-                }
-
-            }
-
-            catch (error) {
-
-                console.error(
-                    "Ask request failed:",
-                    error
-                );
-
-
-                if (
-                    error.name === "AbortError"
-                ) {
-
-                    answerElement.textContent =
-                        "⏳ The request took too long. Please try again.";
-
-                }
-
-                else {
-
-                    answerElement.textContent =
-                        "❌ Unable to connect to the server.";
-
-                }
-
-            }
-
-            finally {
-
-                loadingElement.classList.add(
-                    "hidden"
-                );
-
-            }
-
+            return;
         }
 
 
-        // ==========================================
-        // ASK BUTTON
-        // ==========================================
-
-        document
-            .getElementById(
-                "askButton"
-            )
-            .addEventListener(
-                "click",
-                askQuestion
-            );
+        answerElement.textContent =
+            data.answer ||
+            "No answer was returned.";
 
 
-        // ==========================================
-        // INITIAL PAGE LOAD
-        // ==========================================
+        if (
+            data.sources &&
+            data.sources.length > 0
+        ) {
 
-        window.addEventListener(
-            "DOMContentLoaded",
-            async function() {
+            sourcesElement.innerHTML =
+                data.sources
+                    .map(
+                        source => {
 
-                await loadSubjects();
+                            const metadata =
+                                source.metadata ||
+                                {};
 
-                await loadChapters();
+
+                            const distance =
+                                Number(
+                                    source.distance
+                                );
+
+
+                            const safeDistance =
+                                Number.isFinite(
+                                    distance
+                                )
+                                    ? distance.toFixed(4)
+                                    : "N/A";
+
+
+                            return `
+                                <div class="source-card">
+
+                                    <div class="source-header">
+
+                                        <div class="source-title">
+                                            📄 ${escapeHtml(
+                                                metadata.filename ||
+                                                "Unknown file"
+                                            )}
+                                        </div>
+
+                                    </div>
+
+
+                                    <div class="source-meta">
+
+                                        Subject:
+                                        ${escapeHtml(
+                                            metadata.subject ||
+                                            "General"
+                                        )}
+
+                                        <br>
+
+                                        Chapter:
+                                        ${escapeHtml(
+                                            metadata.chapter ||
+                                            "General"
+                                        )}
+
+                                        <br>
+
+                                        Content Type:
+                                        ${escapeHtml(
+                                            metadata.content_type ||
+                                            "Notes"
+                                        )}
+
+                                        <br>
+
+                                        Distance:
+                                        ${safeDistance}
+
+                                    </div>
+
+
+                                    <div class="source-text">
+                                        ${escapeHtml(
+                                            source.text ||
+                                            ""
+                                        )}
+                                    </div>
+
+                                </div>
+                            `;
+
+                        }
+                    )
+                    .join("");
+
+        }
+        else {
+
+            sourcesElement.innerHTML =
+                `
+                <div class="empty-state">
+                    No sources found.
+                </div>
+                `;
+
+        }
+
+    }
+    catch (error) {
+
+        console.error(
+            "Ask request failed:",
+            error
+        );
+
+
+        if (
+            error.name ===
+            "AbortError"
+        ) {
+
+            answerElement.textContent =
+                "⏳ The request took too long. Please try again.";
+
+        }
+        else {
+
+            answerElement.textContent =
+                "❌ Unable to connect to the server.";
+
+        }
+
+    }
+    finally {
+
+        loadingElement.classList.add(
+            "hidden"
+        );
+
+
+        askButton.disabled =
+            false;
+
+    }
+
+}
+
+
+// ==========================================
+// OPEN DOCUMENT
+// ==========================================
+
+function openDocument(filename) {
+
+    const documentInfo =
+        allDocuments.find(
+            document =>
+                document.filename ===
+                filename
+        );
+
+
+    if (!documentInfo) {
+
+        alert(
+            "Document information not found."
+        );
+
+        return;
+    }
+
+
+    if (!documentInfo.exists) {
+
+        alert(
+            "This document is not available in the data folder."
+        );
+
+        return;
+    }
+
+
+    const url =
+        "/document/" +
+        encodeURIComponent(filename);
+
+
+    window.open(
+        url,
+        "_blank"
+    );
+
+}
+
+
+// ==========================================
+// RENDER DOCUMENTS
+// ==========================================
+
+function renderDocuments() {
+
+    const documentsGrid =
+        document.getElementById(
+            "documentsGrid"
+        );
+
+
+    const subjectFilter =
+        document.getElementById(
+            "documentSubjectFilter"
+        ).value;
+
+
+    const typeFilter =
+        document.getElementById(
+            "documentTypeFilter"
+        ).value;
+
+
+    const searchText =
+        document.getElementById(
+            "documentSearch"
+        ).value
+        .trim()
+        .toLowerCase();
+
+
+    const showMissing =
+        document.getElementById(
+            "showMissing"
+        ).checked;
+
+
+    const filteredDocuments =
+        allDocuments.filter(
+            document => {
+
+                const matchesSubject =
+                    !subjectFilter ||
+                    document.subject ===
+                    subjectFilter;
+
+
+                const matchesType =
+                    !typeFilter ||
+                    document.content_type ===
+                    typeFilter;
+
+
+                const searchableText = (
+                    document.filename +
+                    " " +
+                    document.subject +
+                    " " +
+                    document.chapter +
+                    " " +
+                    document.content_type +
+                    " " +
+                    document.format
+                ).toLowerCase();
+
+
+                const matchesSearch =
+                    !searchText ||
+                    searchableText.includes(
+                        searchText
+                    );
+
+
+                const matchesMissing =
+                    showMissing ||
+                    document.exists;
+
+
+                return (
+                    matchesSubject &&
+                    matchesType &&
+                    matchesSearch &&
+                    matchesMissing
+                );
 
             }
         );
 
 
-    </script>
+    const resultLabel =
+        document.getElementById(
+            "documentResultCount"
+        );
+
+
+    resultLabel.textContent =
+        `Showing ${filteredDocuments.length} of ${allDocuments.length} documents`;
+
+
+    if (
+        filteredDocuments.length === 0
+    ) {
+
+        documentsGrid.innerHTML =
+            `
+            <div class="empty-state">
+
+                📭 No matching documents found.
+
+            </div>
+            `;
+
+        return;
+    }
+
+
+    documentsGrid.innerHTML =
+        filteredDocuments
+            .map(
+                document => {
+
+                    const exists =
+                        Boolean(
+                            document.exists
+                        );
+
+
+                    const statusText =
+                        exists
+                            ? "Available"
+                            : "Missing";
+
+
+                    const statusClass =
+                        exists
+                            ? "status-available"
+                            : "status-missing";
+
+
+                    const cardClass =
+                        exists
+                            ? "document-card clickable-document"
+                            : "document-card";
+
+
+                    const clickAction =
+                        exists
+                            ? `onclick="openDocument(${JSON.stringify(document.filename)})"`
+                            : "";
+
+
+                    const openText =
+                        exists
+                            ? "🖱️ Click to open"
+                            : "⚠️ File not available";
+
+
+                    return `
+                        <div
+                            class="${cardClass}"
+                            ${clickAction}
+                            title="${
+                                exists
+                                    ? "Click to open document"
+                                    : "File not available"
+                            }"
+                        >
+
+                            <div class="document-name">
+
+                                📄
+
+                                ${escapeHtml(
+                                    document.filename
+                                )}
+
+                            </div>
+
+
+                            <div class="document-meta">
+
+                                <span class="badge">
+
+                                    ${escapeHtml(
+                                        document.subject ||
+                                        "General"
+                                    )}
+
+                                </span>
+
+
+                                <span class="badge">
+
+                                    ${escapeHtml(
+                                        document.chapter ||
+                                        "General"
+                                    )}
+
+                                </span>
+
+
+                                <span class="badge">
+
+                                    ${escapeHtml(
+                                        document.content_type ||
+                                        "Notes"
+                                    )}
+
+                                </span>
+
+
+                                <span class="badge">
+
+                                    ${escapeHtml(
+                                        document.format ||
+                                        "FILE"
+                                    )}
+
+                                </span>
+
+
+                                <span
+                                    class="badge ${statusClass}"
+                                >
+
+                                    ${statusText}
+
+                                </span>
+
+                            </div>
+
+
+                            <div class="document-info">
+
+                                File size:
+                                ${formatBytes(
+                                    document.size_bytes
+                                )}
+
+                                <br>
+
+                                ${openText}
+
+                            </div>
+
+
+                        </div>
+                    `;
+
+                }
+            )
+            .join("");
+
+}
+
+
+// ==========================================
+// LOAD DOCUMENTS
+// ==========================================
+
+async function loadDocuments() {
+
+    try {
+
+        const response =
+            await fetch(
+                "/documents"
+            );
+
+
+        const data =
+            await response.json();
+
+
+        allDocuments =
+            data.documents || [];
+
+
+        renderDocuments();
+
+    }
+    catch (error) {
+
+        console.error(
+            "Could not load documents:",
+            error
+        );
+
+
+        document.getElementById(
+            "documentsGrid"
+        ).innerHTML =
+            `
+            <div class="empty-state">
+
+                ❌ Could not load documents.
+
+            </div>
+            `;
+
+    }
+
+}
+
+
+// ==========================================
+// COPY ANSWER
+// ==========================================
+
+async function copyAnswer() {
+
+    const answer =
+        document.getElementById(
+            "answer"
+        ).textContent.trim();
+
+
+    if (!answer) {
+
+        return;
+    }
+
+
+    const button =
+        document.getElementById(
+            "copyButton"
+        );
+
+
+    try {
+
+        await navigator.clipboard.writeText(
+            answer
+        );
+
+
+        button.textContent =
+            "✅ Copied";
+
+
+        setTimeout(
+            () => {
+
+                button.textContent =
+                    "📋 Copy";
+
+            },
+            1500
+        );
+
+    }
+    catch (error) {
+
+        console.error(
+            "Copy failed:",
+            error
+        );
+
+    }
+
+}
+
+
+// ==========================================
+// REFRESH APPLICATION
+// ==========================================
+
+async function refreshApplication() {
+
+    await loadDashboard();
+
+    await loadSubjects();
+
+    await loadChapters();
+
+    await loadDocuments();
+
+}
+
+
+// ==========================================
+// EVENT LISTENERS
+// ==========================================
+
+document
+    .getElementById(
+        "questionSubject"
+    )
+    .addEventListener(
+        "change",
+        loadChapters
+    );
+
+
+document
+    .getElementById(
+        "documentSubjectFilter"
+    )
+    .addEventListener(
+        "change",
+        renderDocuments
+    );
+
+
+document
+    .getElementById(
+        "documentTypeFilter"
+    )
+    .addEventListener(
+        "change",
+        renderDocuments
+    );
+
+
+document
+    .getElementById(
+        "documentSearch"
+    )
+    .addEventListener(
+        "input",
+        renderDocuments
+    );
+
+
+document
+    .getElementById(
+        "showMissing"
+    )
+    .addEventListener(
+        "change",
+        renderDocuments
+    );
+
+
+document
+    .getElementById(
+        "uploadButton"
+    )
+    .addEventListener(
+        "click",
+        uploadDocument
+    );
+
+
+document
+    .getElementById(
+        "askButton"
+    )
+    .addEventListener(
+        "click",
+        askQuestion
+    );
+
+
+document
+    .getElementById(
+        "copyButton"
+    )
+    .addEventListener(
+        "click",
+        copyAnswer
+    );
+
+
+document
+    .getElementById(
+        "refreshButton"
+    )
+    .addEventListener(
+        "click",
+        refreshApplication
+    );
+
+
+// ==========================================
+// INITIALIZE APPLICATION
+// ==========================================
+
+window.addEventListener(
+    "DOMContentLoaded",
+    async function() {
+
+        console.log(
+            "Initializing Subject Guide AI Assistant..."
+        );
+
+
+        await refreshApplication();
+
+
+        console.log(
+            "Application initialized successfully."
+        );
+
+    }
+);
+
+</script>
 
 
 </body>
