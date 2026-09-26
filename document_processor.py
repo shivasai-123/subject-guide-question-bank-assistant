@@ -1,5 +1,6 @@
 import os
 import re
+
 import pymupdf
 from docx import Document
 from pptx import Presentation
@@ -10,15 +11,18 @@ from pptx import Presentation
 # ==========================================
 
 def clean_line(line):
-
     if not line:
         return ""
 
+    # Remove invisible characters
     line = line.replace("\u200b", "")
     line = line.replace("\ufeff", "")
-    line = line.strip()
+    line = line.replace("\xa0", " ")
 
-    return line
+    # Normalize whitespace
+    line = re.sub(r"\s+", " ", line)
+
+    return line.strip()
 
 
 # ==========================================
@@ -49,6 +53,7 @@ def extract_text_from_docx(file_path):
 
     lines = []
 
+    # Read paragraphs
     for paragraph in document.paragraphs:
 
         text = clean_line(
@@ -58,7 +63,7 @@ def extract_text_from_docx(file_path):
         if text:
             lines.append(text)
 
-    # Also read tables
+    # Read tables
     for table in document.tables:
 
         for row in table.rows:
@@ -75,6 +80,7 @@ def extract_text_from_docx(file_path):
                     row_text.append(text)
 
             if row_text:
+
                 lines.append(
                     " | ".join(row_text)
                 )
@@ -88,7 +94,9 @@ def extract_text_from_docx(file_path):
 
 def extract_text_from_pptx(file_path):
 
-    presentation = Presentation(file_path)
+    presentation = Presentation(
+        file_path
+    )
 
     lines = []
 
@@ -165,7 +173,7 @@ def normalize_chapter_name(chapter):
         return "General"
 
     match = re.match(
-        r"^Chapter\s*(\d+)\s*[:.]?\s*(.+)$",
+        r"^Chapter\s+(\d+)\s*[:.]?\s*(.+)$",
         chapter,
         re.IGNORECASE
     )
@@ -185,6 +193,7 @@ def normalize_chapter_name(chapter):
         title
     )
 
+    # Remove "in Python" at the end
     title = re.sub(
         r"\s+in\s+Python$",
         "",
@@ -192,6 +201,7 @@ def normalize_chapter_name(chapter):
         flags=re.IGNORECASE
     )
 
+    # Fix common extraction issues
     title = title.replace(
         "ControlFlow",
         "Control Flow"
@@ -208,32 +218,71 @@ def normalize_chapter_name(chapter):
         " .:-"
     )
 
+    # Canonical Python chapter names
     canonical_titles = {
 
-        1: "Introduction to Python",
-        2: "Environment Setup",
-        3: "Python Syntax Basics",
-        4: "Data Types",
-        5: "Operators",
-        6: "String Operations",
-        7: "Control Flow",
-        8: "Loops and Iteration",
-        9: "Data Structures",
-        10: "Functions",
-        11: "Advanced Functions",
-        12: "Scope and Namespaces",
-        13: "Modules and Packages",
-        14: "Object-Oriented Programming",
-        15: "Advanced OOP",
-        16: "File Handling and Error Management",
-        17: "Advanced Python Concepts",
-        18: "Concurrent and Asynchronous Programming"
+        1:
+            "Introduction to Python",
+
+        2:
+            "Environment Setup",
+
+        3:
+            "Python Syntax Basics",
+
+        4:
+            "Data Types",
+
+        5:
+            "Operators",
+
+        6:
+            "String Operations",
+
+        7:
+            "Control Flow",
+
+        8:
+            "Loops and Iteration",
+
+        9:
+            "Data Structures",
+
+        10:
+            "Functions",
+
+        11:
+            "Advanced Functions",
+
+        12:
+            "Scope and Namespaces",
+
+        13:
+            "Modules and Packages",
+
+        14:
+            "Object-Oriented Programming",
+
+        15:
+            "Advanced OOP",
+
+        16:
+            "File Handling and Error Management",
+
+        17:
+            "Advanced Python Concepts",
+
+        18:
+            "Concurrent and Asynchronous Programming"
     }
 
     if number in canonical_titles:
+
         title = canonical_titles[number]
 
-    return f"Chapter {number}: {title}"
+    return (
+        f"Chapter {number}: {title}"
+    )
 
 
 # ==========================================
@@ -260,18 +309,25 @@ def get_document_type(file_path):
         "question paper"
     ]
 
+    # Question bank must be checked first
     for keyword in question_bank_keywords:
 
         if keyword in filename:
+
             return "question_bank"
 
+    # C programming files
     if (
         "c_programming" in filename
         or "c programming" in filename
+        or "c basics" in filename
     ):
+
         return "simple_number_style"
 
+    # Python files
     if "python" in filename:
+
         return "chapter_style"
 
     return "general"
@@ -291,6 +347,10 @@ def detect_chapter(
     if not line:
         return None
 
+    # --------------------------------------
+    # Python chapter style
+    # --------------------------------------
+
     if document_type == "chapter_style":
 
         match = re.match(
@@ -307,14 +367,19 @@ def detect_chapter(
 
         return None
 
+    # --------------------------------------
+    # Simple numbered chapter style
+    # --------------------------------------
+
     if document_type == "simple_number_style":
 
         match = re.match(
-            r"^\d+\.\s+[A-Za-z][A-Za-z0-9 &()/\\*+\-'.:]*$",
+            r"^\d+\.\s+[A-Za-z][A-Za-z0-9 &()/+\\\-'.:]*$",
             line
         )
 
         if match:
+
             return line
 
         return None
@@ -344,6 +409,7 @@ def split_into_chapters(
     sections = []
 
     current_chapter = default_chapter
+
     current_lines = []
 
     found_first_heading = False
@@ -362,53 +428,54 @@ def split_into_chapters(
                 and current_lines
             ):
 
-                sections.append(
-                    {
-                        "chapter":
-                            current_chapter,
+                sections.append({
+                    "chapter":
+                        current_chapter,
 
-                        "lines":
-                            current_lines
-                    }
-                )
+                    "lines":
+                        current_lines
+                })
 
             current_chapter = heading
 
-            current_lines = [line]
+            current_lines = [
+                line
+            ]
 
             found_first_heading = True
 
         else:
 
             if found_first_heading:
-                current_lines.append(line)
 
+                current_lines.append(
+                    line
+                )
+
+    # Add final section
     if (
         found_first_heading
         and current_lines
     ):
 
-        sections.append(
-            {
-                "chapter":
-                    current_chapter,
+        sections.append({
+            "chapter":
+                current_chapter,
 
-                "lines":
-                    current_lines
-            }
-        )
+            "lines":
+                current_lines
+        })
 
+    # If no chapters were detected
     if not sections:
 
-        sections.append(
-            {
-                "chapter":
-                    default_chapter,
+        sections.append({
+            "chapter":
+                default_chapter,
 
-                "lines":
-                    lines
-            }
-        )
+            "lines":
+                lines
+        })
 
     return sections
 
@@ -425,9 +492,16 @@ def chunk_chapter(
 
     chunks = []
 
-    start = 0
+    if not lines:
+        return chunks
 
-    step = chunk_size - overlap
+    # Prevent invalid step
+    step = max(
+        1,
+        chunk_size - overlap
+    )
+
+    start = 0
 
     while start < len(lines):
 
@@ -442,7 +516,10 @@ def chunk_chapter(
         ).strip()
 
         if chunk:
-            chunks.append(chunk)
+
+            chunks.append(
+                chunk
+            )
 
         start += step
 
@@ -453,63 +530,249 @@ def chunk_chapter(
 # 11. QUESTION BANK CHUNKING
 # ==========================================
 
+QUESTION_START_PATTERN = re.compile(
+    r"(?<!\d)(\d{1,3})\s*[\.\)]\s*"
+)
+
+
 def chunk_question_bank(text):
+    """
+    Convert a question-bank document into
+    individual question strings.
+
+    Handles:
+
+        1. BFS
+        2. DFS
+        3) Monkey Banana
+        10.Write Tower of Hanoi
+
+    Also handles multiple questions on the
+    same extracted PDF line.
+
+    Garbage entries such as:
+
+        10. 1
+
+    are ignored.
+    """
+
+    # --------------------------------------
+    # Clean input lines
+    # --------------------------------------
 
     lines = []
 
-    for line in text.splitlines():
+    for raw_line in text.splitlines():
 
-        cleaned = clean_line(line)
+        cleaned = clean_line(
+            raw_line
+        )
 
         if cleaned:
-            lines.append(cleaned)
+
+            lines.append(
+                cleaned
+            )
 
     questions = []
 
-    current_question = []
+    current_parts = []
+
+    current_number = None
+
+    # --------------------------------------
+    # Helper to save current question
+    # --------------------------------------
+
+    def flush_current():
+
+        nonlocal current_parts
+        nonlocal current_number
+
+        if not current_parts:
+            return
+
+        question = " ".join(
+            current_parts
+        ).strip()
+
+        # Clean repeated spaces
+        question = re.sub(
+            r"\s+",
+            " ",
+            question
+        ).strip()
+
+        # ----------------------------------
+        # Ignore empty / numeric-only garbage
+        # ----------------------------------
+
+        if not question:
+            current_parts = []
+            return
+
+        if re.fullmatch(
+            r"\d+",
+            question
+        ):
+
+            current_parts = []
+            return
+
+        # Ignore a few obvious extraction
+        # artifacts such as "1 2 3"
+        if re.fullmatch(
+            r"[\d\s]+",
+            question
+        ):
+
+            current_parts = []
+            return
+
+        # ----------------------------------
+        # Avoid duplicate questions
+        # ----------------------------------
+
+        existing = {
+            q.lower()
+            for q in questions
+        }
+
+        if question.lower() not in existing:
+
+            questions.append(
+                question
+            )
+
+        current_parts = []
+
+    # --------------------------------------
+    # Process lines
+    # --------------------------------------
 
     for line in lines:
 
-        match = re.match(
-            r"^\d+\.\s+",
-            line
+        matches = list(
+            QUESTION_START_PATTERN.finditer(
+                line
+            )
         )
 
-        if match:
+        # ----------------------------------
+        # No numbered question on this line
+        # ----------------------------------
 
-            if current_question:
+        if not matches:
 
-                questions.append(
-                    " ".join(
-                        current_question
-                    )
-                )
+            if current_parts:
 
-            current_question = [
-                line
-            ]
-
-        else:
-
-            if current_question:
-
-                current_question.append(
+                current_parts.append(
                     line
                 )
 
-    if current_question:
+            continue
 
-        questions.append(
-            " ".join(
-                current_question
+        # ----------------------------------
+        # Process numbered questions
+        # ----------------------------------
+
+        for index, match in enumerate(matches):
+
+            number = int(
+                match.group(1)
             )
-        )
+
+            # Content after this marker
+            content_start = match.end()
+
+            if index + 1 < len(matches):
+
+                content_end = matches[
+                    index + 1
+                ].start()
+
+            else:
+
+                content_end = len(line)
+
+            content = line[
+                content_start:content_end
+            ].strip()
+
+            # ----------------------------------
+            # Decide whether this is a real
+            # question boundary.
+            # ----------------------------------
+
+            is_new_question = False
+
+            if current_number is None:
+
+                is_new_question = True
+
+            elif number == current_number + 1:
+
+                is_new_question = True
+
+            elif (
+                not current_parts
+                and number == 1
+            ):
+
+                is_new_question = True
+
+            # ----------------------------------
+            # Start a new question
+            # ----------------------------------
+
+            if is_new_question:
+
+                flush_current()
+
+                current_number = number
+
+                current_parts = []
+
+                # ----------------------------------
+                # Ignore numeric-only artifacts
+                # ----------------------------------
+
+                if content:
+
+                    if not re.fullmatch(
+                        r"\d+",
+                        content
+                    ):
+
+                        current_parts.append(
+                            content
+                        )
+
+            else:
+
+                # ----------------------------------
+                # Not a valid new question number.
+                # Treat it as content.
+                # ----------------------------------
+
+                if content:
+
+                    current_parts.append(
+                        content
+                    )
+
+    # --------------------------------------
+    # Save final question
+    # --------------------------------------
+
+    flush_current()
 
     return questions
 
 
 # ==========================================
-# 12. PROCESS ONE FILE
+# 12. PROCESS PDF
 # ==========================================
 
 def process_pdf(
@@ -525,11 +788,19 @@ def process_pdf(
     )
 
 
+# ==========================================
+# 13. PROCESS ONE FILE
+# ==========================================
+
 def process_file(
     file_path,
     subject="General",
     chapter="General"
 ):
+
+    # --------------------------------------
+    # Extract text
+    # --------------------------------------
 
     text = extract_text_from_file(
         file_path
@@ -539,12 +810,15 @@ def process_file(
         file_path
     )
 
+    # --------------------------------------
+    # Determine document type
+    # --------------------------------------
+
     document_type = get_document_type(
         file_path
     )
 
     documents = []
-
 
     # ======================================
     # QUESTION BANK
@@ -558,30 +832,28 @@ def process_file(
 
         for question in questions:
 
-            documents.append(
-                {
-                    "text":
-                        question,
+            documents.append({
 
-                    "metadata": {
+                "text":
+                    question,
 
-                        "filename":
-                            filename,
+                "metadata": {
 
-                        "subject":
-                            subject,
+                    "filename":
+                        filename,
 
-                        "chapter":
-                            chapter,
+                    "subject":
+                        subject,
 
-                        "content_type":
-                            "Question Bank"
-                    }
+                    "chapter":
+                        chapter,
+
+                    "content_type":
+                        "Question Bank"
                 }
-            )
+            })
 
         return documents
-
 
     # ======================================
     # NORMAL DOCUMENT
@@ -594,6 +866,10 @@ def process_file(
     )
 
     for section in sections:
+
+        # ----------------------------------
+        # Normalize Python chapter name
+        # ----------------------------------
 
         if document_type == "chapter_style":
 
@@ -609,6 +885,9 @@ def process_file(
                 section["chapter"]
             )
 
+        # ----------------------------------
+        # Create chunks
+        # ----------------------------------
 
         chunks = chunk_chapter(
             section["lines"],
@@ -616,34 +895,35 @@ def process_file(
             overlap=2
         )
 
+        # ----------------------------------
+        # Create document objects
+        # ----------------------------------
 
         for chunk in chunks:
 
-            documents.append(
-                {
-                    "text":
-                        chunk,
+            documents.append({
 
-                    "metadata": {
+                "text":
+                    chunk,
 
-                        "filename":
-                            filename,
+                "metadata": {
 
-                        "subject":
-                            subject,
+                    "filename":
+                        filename,
 
-                        "chapter":
-                            chapter_name
-                    }
+                    "subject":
+                        subject,
+
+                    "chapter":
+                        chapter_name
                 }
-            )
-
+            })
 
     return documents
 
 
 # ==========================================
-# 13. PROCESS MULTIPLE FILES
+# 14. PROCESS MULTIPLE FILES
 # ==========================================
 
 def process_multiple_pdfs(
