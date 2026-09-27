@@ -1,147 +1,277 @@
 import os
+import re
 import shutil
 import time
-import re
 
-from fastapi import (
-    FastAPI,
-    UploadFile,
-    File,
-    HTTPException,
-    Form
-)
-
-from fastapi.responses import (
-    FileResponse,
-    StreamingResponse
-)
-
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from document_processor import process_file
 from rag_engine import RAGEngine
 from learning_tools import LearningTools
-
 from metadata_manager import (
     load_metadata,
     set_document_metadata,
-    get_all_metadata
+    get_all_metadata,
 )
 
-
-# ==========================================
-# 1. FASTAPI APPLICATION
-# ==========================================
 
 app = FastAPI(
     title="Subject Guide & Question Bank AI Assistant",
     description="Multi-document RAG academic learning assistant",
-    version="3.9"
+    version="3.11",
 )
 
-
-# ==========================================
-# 2. INITIALIZE ENGINES
-# ==========================================
 
 rag = RAGEngine()
+learning = LearningTools(model="llama3.2:3b")
 
-learning = LearningTools(
-    model="llama3.2:3b"
-)
-
-
-# ==========================================
-# 3. DOCUMENT STORAGE
-# ==========================================
 
 DATA_FOLDER = "data"
+os.makedirs(DATA_FOLDER, exist_ok=True)
 
-os.makedirs(
-    DATA_FOLDER,
-    exist_ok=True
-)
-
-
-# ==========================================
-# 4. SUPPORTED FILE TYPES
-# ==========================================
 
 SUPPORTED_EXTENSIONS = (
     ".pdf",
     ".docx",
-    ".pptx"
+    ".pptx",
 )
 
 
-# ==========================================
-# 5. DETECT CONTENT TYPE
-# ==========================================
+def detect_content_type(filename: str) -> str:
+    name = filename.lower()
 
-def detect_content_type(filename):
-    filename_lower = filename.lower()
+    if any(
+        k in name
+        for k in [
+            "question",
+            "question bank",
+            "questionbank",
+            "previous year",
+            "previousyear",
+            "pyq",
+            "paper",
+            "exam",
+            "questionpaper",
+            "question paper",
+        ]
+    ):
+        return "Question Bank"
 
-    question_bank_keywords = [
-        "question",
-        "question bank",
-        "questionbank",
-        "previous year",
-        "previousyear",
-        "pyq",
-        "paper",
-        "exam",
-        "questionpaper",
-        "question paper"
-    ]
+    if any(
+        k in name
+        for k in [
+            "lab",
+            "laboratory",
+            "practical",
+        ]
+    ):
+        return "Lab Manual"
 
-    lab_keywords = [
-        "lab",
-        "laboratory",
-        "practical"
-    ]
-
-    textbook_keywords = [
-        "textbook",
-        "book"
-    ]
-
-    for keyword in question_bank_keywords:
-        if keyword in filename_lower:
-            return "Question Bank"
-
-    for keyword in lab_keywords:
-        if keyword in filename_lower:
-            return "Lab Manual"
-
-    for keyword in textbook_keywords:
-        if keyword in filename_lower:
-            return "Textbook"
+    if any(
+        k in name
+        for k in [
+            "textbook",
+            "book",
+        ]
+    ):
+        return "Textbook"
 
     return "Notes"
 
 
-# ==========================================
-# 6. QUESTION BANK HELPERS
-# ==========================================
+def is_question_bank_result(result: dict) -> bool:
+    """Return True when a retrieved result belongs to a question bank."""
 
-def split_question_bank_text(text: str) -> list[str]:
+    content_type = str(
+        result.get("content_type")
+        or result.get(
+            "metadata",
+            {},
+        ).get(
+            "content_type",
+            "",
+        )
+    ).strip().lower()
+
+    filename = str(
+        result.get(
+            "filename",
+            "",
+        )
+    ).lower()
+
+    return (
+        content_type
+        in {
+            "question bank",
+            "questionbank",
+        }
+        or "question bank" in filename
+        or "questionbank" in filename
+        or "questionpaper" in filename
+        or "previous year" in filename
+        or "pyq" in filename
+    )
+
+
+def get_study_results(
+    results: list[dict],
+) -> list[dict]:
+    """Keep study material and exclude question-bank chunks."""
+
+    return [
+        result
+        for result in results
+        if not is_question_bank_result(result)
+    ]
+
+
+def merge_document_results(
+    *result_sets: list[dict],
+) -> list[dict]:
+    """Merge retrieved results without duplicating the same chunk."""
+
+    merged = []
+    seen = set()
+
+    for result_set in result_sets:
+        for result in result_set:
+
+            key = (
+                result.get("filename"),
+                result.get("index"),
+                result.get("text", ""),
+            )
+
+            if key in seen:
+                continue
+
+            seen.add(key)
+            merged.append(result)
+
+    return merged
+
+
+def get_example_source_context(
+    study_results: list[dict],
+    subject: str | None = None,
+    chapter: str | None = None,
+    max_source_files: int = 2,
+) -> str:
     """
-    Split question-bank text into individual questions.
+    Collect all study chunks from the most relevant source files.
 
-    Supports formats such as:
-
-    1. BFS
-    2. DFS
-    3) Monkey Banana
-    10.Write Tower of Hanoi
+    This gives the example extractor enough neighboring material
+    to reconstruct a complete code example when a PDF splits
+    it across multiple vector chunks.
     """
 
-    if not text:
-        return []
+    if not study_results:
+        return ""
+
+    source_files = []
+    seen_files = set()
+
+    for result in study_results:
+
+        filename = result.get(
+            "filename"
+        )
+
+        if (
+            not filename
+            or filename in seen_files
+        ):
+            continue
+
+        seen_files.add(filename)
+        source_files.append(filename)
+
+        if (
+            len(source_files)
+            >= max_source_files
+        ):
+            break
+
+    selected = []
+
+    for document in rag.documents:
+
+        metadata = document.get(
+            "metadata",
+            {},
+        )
+
+        filename = (
+            document.get("filename")
+            or metadata.get("filename")
+        )
+
+        if filename not in source_files:
+            continue
+
+        content_type = str(
+            document.get("content_type")
+            or metadata.get(
+                "content_type",
+                "",
+            )
+        ).strip().lower()
+
+        if content_type in {
+            "question bank",
+            "questionbank",
+        }:
+            continue
+
+        document_subject = (
+            document.get("subject")
+            or metadata.get("subject")
+        )
+
+        document_chapter = (
+            document.get("chapter")
+            or metadata.get("chapter")
+        )
+
+        if (
+            subject
+            and document_subject != subject
+        ):
+            continue
+
+        if (
+            chapter
+            and document_chapter != chapter
+        ):
+            continue
+
+        selected.append(document)
+
+    selected.sort(
+        key=lambda item: item.get(
+            "index",
+            10**9,
+        )
+    )
+
+    if not selected:
+        return ""
+
+    return rag.build_context(
+        selected
+    )
+
+
+def split_question_bank_text(
+    text: str,
+) -> list[str]:
 
     parts = re.split(
-        r"(?=\s*\d+\s*[\.\)])",
-        text
+        r"(?=\b\d{1,3}\s*[\.\)])",
+        text,
     )
 
     questions = []
@@ -154,77 +284,52 @@ def split_question_bank_text(text: str) -> list[str]:
             continue
 
         cleaned = re.sub(
-            r"^\s*\d+\s*[\.\)]\s*",
+            r"^\s*\d{1,3}\s*[\.\)]\s*",
             "",
-            part
+            part,
         ).strip()
 
         if cleaned:
-            questions.append(cleaned)
+            questions.append(
+                cleaned
+            )
 
     return questions
 
 
-def clean_topic_query(query: str) -> str:
-    """
-    Extract the actual topic from questions such as:
-
-    questions related to BFS
-    questions on BFS
-    questions about BFS
-    give me questions related to BFS
-    show me questions about tuples
-    """
+def clean_topic_query(
+    query: str,
+) -> str:
 
     topic = query.strip()
 
     prefixes = [
-
         "give me questions related to",
         "show me questions related to",
         "list questions related to",
         "what questions are related to",
-
-        "give me question related to",
-        "show me question related to",
-        "list question related to",
-        "what question are related to",
-
         "give me questions about",
         "show me questions about",
         "list questions about",
         "what questions are about",
-
-        "give me question about",
-        "show me question about",
-        "list question about",
-        "what question are about",
-
         "give me questions on",
         "show me questions on",
         "list questions on",
         "what questions are on",
-
-        "give me question on",
-        "show me question on",
-        "list question on",
-        "what question are on",
-
+        "give me question related to",
         "questions related to",
         "question related to",
-
         "questions about",
         "question about",
-
         "questions on",
-        "question on"
+        "question on",
     ]
-
-    query_lower = topic.lower()
 
     for prefix in prefixes:
 
-        if query_lower.startswith(prefix):
+        if topic.lower().startswith(
+            prefix
+        ):
 
             topic = topic[
                 len(prefix):
@@ -232,218 +337,182 @@ def clean_topic_query(query: str) -> str:
 
             break
 
-    # Remove common filler words
-    topic = re.sub(
-        r"^(the|a|an|about|on)\s+",
-        "",
-        topic,
-        flags=re.IGNORECASE
-    ).strip()
-
-    return topic
-
-
-def get_topic_variations(topic: str) -> list[str]:
-    """
-    Provide aliases for common technical topics.
-
-    Example:
-
-    BFS
-    -> BFS
-    -> Breadth First Search
-    """
-
-    topic_lower = topic.lower().strip()
-
-    aliases = {
-
-        "bfs": [
-            "bfs",
-            "breadth first search",
-            "breadth-first search"
-        ],
-
-        "dfs": [
-            "dfs",
-            "depth first search",
-            "depth-first search"
-        ],
-
-        "oop": [
-            "oop",
-            "object oriented programming",
-            "object-oriented programming"
-        ],
-
-        "oops": [
-            "oops",
-            "oop",
-            "object oriented programming",
-            "object-oriented programming"
-        ],
-
-        "dbms": [
-            "dbms",
-            "database management system"
-        ],
-
-        "sql": [
-            "sql",
-            "structured query language"
-        ]
-    }
-
-    if topic_lower in aliases:
-        return aliases[topic_lower]
-
-    return [topic_lower]
+    return topic.strip(
+        " :?-"
+    )
 
 
 def question_matches_topic(
     question_text: str,
-    topic: str
+    topic: str,
 ) -> bool:
 
-    question_lower = question_text.lower().strip()
+    q = question_text.lower().strip()
+    t = topic.lower().strip()
 
-    if not topic:
+    if not t:
         return False
 
-    topic_variations = get_topic_variations(
-        topic
+    aliases = {
+        "bfs": [
+            "breadth first search",
+            "bfs",
+        ],
+        "breadth first search": [
+            "breadth first search",
+            "bfs",
+        ],
+        "dfs": [
+            "depth first search",
+            "dfs",
+        ],
+        "depth first search": [
+            "depth first search",
+            "dfs",
+        ],
+    }
+
+    candidates = aliases.get(
+        t,
+        [t],
     )
 
-    # --------------------------------------
-    # Exact phrase / alias match
-    # --------------------------------------
+    for candidate in candidates:
 
-    for variation in topic_variations:
-
-        if variation in question_lower:
+        if candidate in q:
             return True
 
-    # --------------------------------------
-    # Multi-word topic
-    # --------------------------------------
-
-    topic_words = re.findall(
+    words = re.findall(
         r"[a-zA-Z0-9]+",
-        topic.lower()
+        t,
     )
 
-    if len(topic_words) > 1:
+    if len(words) > 1:
 
-        stop_words = {
-            "the",
-            "a",
-            "an",
-            "of",
-            "and",
-            "in",
-            "on",
-            "to",
-            "for",
-            "using",
-            "with"
-        }
-
-        important_words = [
-            word
-            for word in topic_words
-            if word not in stop_words
-        ]
-
-        if important_words:
-
-            if all(
-                word in question_lower
-                for word in important_words
-            ):
-                return True
+        return all(
+            word in q
+            for word in words
+            if len(word) > 1
+        )
 
     return False
 
 
-def is_topic_question_query(query: str) -> bool:
+def extract_matching_questions(
+    results: list[dict],
+    topic: str,
+    limit: int = 10,
+):
 
-    query_lower = query.lower().strip()
+    matched_questions = []
+    matched_sources = []
 
-    topic_patterns = [
+    seen = set()
 
-        "questions related to",
-        "question related to",
+    for result in results:
 
-        "questions about",
-        "question about",
+        text = result.get(
+            "text",
+            "",
+        ).strip()
 
-        "questions on",
-        "question on",
+        if not text:
+            continue
 
-        "give me questions related to",
-        "show me questions related to",
-        "list questions related to",
+        for question_text in split_question_bank_text(
+            text
+        ):
 
-        "give me questions about",
-        "show me questions about",
-        "list questions about",
+            if not question_matches_topic(
+                question_text,
+                topic,
+            ):
+                continue
 
-        "give me questions on",
-        "show me questions on",
-        "list questions on"
-    ]
+            key = re.sub(
+                r"\s+",
+                " ",
+                question_text.lower(),
+            ).strip()
 
-    return any(
-        pattern in query_lower
-        for pattern in topic_patterns
+            if key in seen:
+                continue
+
+            seen.add(key)
+
+            matched_questions.append(
+                question_text
+            )
+
+            matched_sources.append(
+                {
+                    "filename": result.get(
+                        "filename"
+                    ),
+                    "subject": result.get(
+                        "subject"
+                    ),
+                    "chapter": result.get(
+                        "chapter"
+                    ),
+                    "content_type": result.get(
+                        "content_type"
+                    ),
+                    "distance": result.get(
+                        "distance"
+                    ),
+                    "text": question_text,
+                }
+            )
+
+            if (
+                len(matched_questions)
+                >= limit
+            ):
+                return (
+                    matched_questions,
+                    matched_sources,
+                )
+
+    return (
+        matched_questions,
+        matched_sources,
     )
 
-
-# ==========================================
-# 7. LOAD EXISTING DOCUMENTS
-# ==========================================
 
 def load_existing_documents():
 
     start_time = time.perf_counter()
 
-    print()
-    print("==========================================")
-    print("LOADING EXISTING DOCUMENTS")
-    print("==========================================")
-
-    # --------------------------------------
-    # Load persistent metadata
-    # --------------------------------------
+    print(
+        "\n=========================================="
+    )
+    print(
+        "LOADING EXISTING DOCUMENTS"
+    )
+    print(
+        "=========================================="
+    )
 
     document_metadata = load_metadata()
 
-    # --------------------------------------
-    # Find supported files
-    # --------------------------------------
-
     supported_files = [
-        file
-        for file in os.listdir(DATA_FOLDER)
-        if file.lower().endswith(
+        f
+        for f in os.listdir(DATA_FOLDER)
+        if f.lower().endswith(
             SUPPORTED_EXTENSIONS
         )
     ]
 
     print(
-        f"Found {len(supported_files)} "
-        f"supported document(s)."
+        f"Found {len(supported_files)} supported document(s)."
     )
-
-    # --------------------------------------
-    # Process every document
-    # --------------------------------------
 
     for filename in supported_files:
 
         file_path = os.path.join(
             DATA_FOLDER,
-            filename
+            filename,
         )
 
         metadata = document_metadata.get(
@@ -451,51 +520,43 @@ def load_existing_documents():
             {
                 "subject": "General",
                 "chapter": "General",
-                "content_type":
-                    detect_content_type(
-                        filename
-                    )
-            }
+                "content_type": detect_content_type(
+                    filename
+                ),
+            },
         )
 
         subject = metadata.get(
             "subject",
-            "General"
+            "General",
         )
 
         chapter = metadata.get(
             "chapter",
-            "General"
+            "General",
         )
 
         content_type = metadata.get(
             "content_type",
             detect_content_type(
                 filename
-            )
+            ),
         )
 
-        # Normalize old metadata
         if content_type == "QuestionBank":
             content_type = "Question Bank"
 
         try:
 
-            document_start = time.perf_counter()
-
-            # ----------------------------------
-            # Process document
-            # ----------------------------------
+            document_start = (
+                time.perf_counter()
+            )
 
             documents = process_file(
                 file_path=file_path,
                 subject=subject,
-                chapter=chapter
+                chapter=chapter,
             )
-
-            # ----------------------------------
-            # Add content type
-            # ----------------------------------
 
             for document in documents:
 
@@ -503,24 +564,16 @@ def load_existing_documents():
                     "content_type"
                 ] = content_type
 
-            # ----------------------------------
-            # Add without rebuilding each time
-            # ----------------------------------
-
             rag.add_documents(
                 documents,
-                rebuild=False
+                rebuild=False,
             )
-
-            # ----------------------------------
-            # Save metadata
-            # ----------------------------------
 
             set_document_metadata(
                 filename=filename,
                 subject=subject,
                 chapter=chapter,
-                content_type=content_type
+                content_type=content_type,
             )
 
             document_time = (
@@ -529,26 +582,20 @@ def load_existing_documents():
             )
 
             print(
-                f"Loaded: {filename} "
-                f"| Subject: {subject} "
-                f"| Chapter: {chapter} "
-                f"| Type: {content_type} "
-                f"| Chunks: {len(documents)} "
-                f"| Time: {document_time:.2f}s"
+                f"Loaded: {filename} | "
+                f"Subject: {subject} | "
+                f"Chapter: {chapter} | "
+                f"Type: {content_type} | "
+                f"Chunks: {len(documents)} | "
+                f"Time: {document_time:.2f}s"
             )
 
         except Exception as e:
 
             print(
-                f"Could not load "
-                f"{filename}: {e}"
+                f"Could not load {filename}: {e}"
             )
 
-    # --------------------------------------
-    # BUILD FAISS ONLY ONCE
-    # --------------------------------------
-
-    print()
     print(
         "Building FAISS index once..."
     )
@@ -558,34 +605,22 @@ def load_existing_documents():
     if rag.documents:
         rag._rebuild_index()
 
-    index_time = (
-        time.perf_counter()
-        - index_start
-    )
-
-    total_time = (
-        time.perf_counter()
-        - start_time
-    )
-
     print(
         f"FAISS build time: "
-        f"{index_time:.2f}s"
+        f"{time.perf_counter() - index_start:.2f}s"
     )
 
     print(
         f"Total startup document loading time: "
-        f"{total_time:.2f}s"
+        f"{time.perf_counter() - start_time:.2f}s"
     )
 
     print(
-        f"Total chunks: "
-        f"{len(rag.documents)}"
+        f"Total chunks: {len(rag.documents)}"
     )
 
     print(
-        f"Total vectors: "
-        f"{rag.get_vector_count()}"
+        f"Total vectors: {rag.get_vector_count()}"
     )
 
     print(
@@ -593,35 +628,20 @@ def load_existing_documents():
     )
 
 
-# Load documents at startup
 load_existing_documents()
 
 
-# ==========================================
-# 8. REQUEST MODELS
-# ==========================================
-
 class Question(BaseModel):
-
     question: str
-
     subject: str | None = None
-
     chapter: str | None = None
 
 
 class TopicRequest(BaseModel):
-
     topic: str
-
     subject: str | None = None
-
     chapter: str | None = None
 
-
-# ==========================================
-# 9. HOME PAGE
-# ==========================================
 
 @app.get("/")
 def home():
@@ -631,61 +651,35 @@ def home():
     )
 
 
-# ==========================================
-# 10. HEALTH CHECK
-# ==========================================
-
 @app.get("/health")
 def health():
 
     return {
-
-        "status":
-            "running",
-
-        "documents":
-            rag.get_document_count(),
-
-        "vectors":
-            rag.get_vector_count(),
-
-        "subjects":
-            rag.get_subjects(),
-
-        "model":
-            learning.model,
-
+        "status": "running",
+        "documents": rag.get_document_count(),
+        "vectors": rag.get_vector_count(),
+        "subjects": rag.get_subjects(),
+        "model": learning.model,
         "supported_formats": [
             "PDF",
             "DOCX",
-            "PPTX"
-        ]
+            "PPTX",
+        ],
     }
 
 
-# ==========================================
-# 11. UPLOAD DOCUMENT
-# ==========================================
-
 @app.post("/upload")
 async def upload_document(
-
     file: UploadFile = File(...),
-
-    subject: str = Form(
-        "General"
-    ),
-
-    chapter: str = Form(
-        "General"
-    )
+    subject: str = Form("General"),
+    chapter: str = Form("General"),
 ):
 
     if not file.filename:
 
         raise HTTPException(
             status_code=400,
-            detail="No filename provided."
+            detail="No filename provided.",
         )
 
     filename = file.filename
@@ -696,15 +690,12 @@ async def upload_document(
 
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Supported formats: "
-                "PDF, DOCX, PPTX."
-            )
+            detail="Supported formats: PDF, DOCX, PPTX.",
         )
 
     file_path = os.path.join(
         DATA_FOLDER,
-        filename
+        filename,
     )
 
     content_type = detect_content_type(
@@ -713,44 +704,21 @@ async def upload_document(
 
     try:
 
-        # ----------------------------------
-        # Save file
-        # ----------------------------------
-
         with open(
             file_path,
-            "wb"
+            "wb",
         ) as buffer:
 
             shutil.copyfileobj(
                 file.file,
-                buffer
+                buffer,
             )
-
-        # ----------------------------------
-        # Process file
-        # ----------------------------------
 
         documents = process_file(
             file_path=file_path,
             subject=subject,
-            chapter=chapter
-        )
-
-        # ----------------------------------
-        # Save metadata
-        # ----------------------------------
-
-        set_document_metadata(
-            filename=filename,
-            subject=subject,
             chapter=chapter,
-            content_type=content_type
         )
-
-        # ----------------------------------
-        # Add content type
-        # ----------------------------------
 
         for document in documents:
 
@@ -758,60 +726,51 @@ async def upload_document(
                 "content_type"
             ] = content_type
 
-        # ----------------------------------
-        # Add to RAG
-        # ----------------------------------
+        set_document_metadata(
+            filename=filename,
+            subject=subject,
+            chapter=chapter,
+            content_type=content_type,
+        )
 
         rag.add_documents(
             documents,
-            rebuild=True
+            rebuild=True,
         )
 
         return {
-
-            "message":
-                "Document uploaded successfully",
-
-            "filename":
-                filename,
-
-            "subject":
-                subject,
-
-            "chapter":
-                chapter,
-
-            "content_type":
-                content_type,
-
-            "chunks_added":
-                len(documents),
-
-            "total_documents":
-                rag.get_document_count(),
-
-            "total_vectors":
+            "message": (
+                "Document uploaded successfully"
+            ),
+            "filename": filename,
+            "subject": subject,
+            "chapter": chapter,
+            "content_type": content_type,
+            "chunks_added": len(documents),
+            "total_documents": (
+                rag.get_document_count()
+            ),
+            "total_vectors": (
                 rag.get_vector_count()
+            ),
         }
 
     except Exception as e:
 
         raise HTTPException(
             status_code=500,
-            detail=str(e)
+            detail=str(e),
         )
 
 
-# ==========================================
-# 12. ASK QUESTION
-# ==========================================
-
 @app.post("/ask")
 def ask_question(
-    data: Question
+    data: Question,
 ):
 
-    request_start = time.perf_counter()
+    request_start = (
+        time.perf_counter()
+    )
 
     query = data.question.strip()
 
@@ -819,12 +778,8 @@ def ask_question(
 
         raise HTTPException(
             status_code=400,
-            detail="Question cannot be empty."
+            detail="Question cannot be empty.",
         )
-
-    # --------------------------------------
-    # Clean filters
-    # --------------------------------------
 
     subject = (
         data.subject.strip()
@@ -840,391 +795,225 @@ def ask_question(
 
     query_lower = query.lower()
 
-    # ======================================
-    # LEARNING PROGRESSION QUERY
-    # ======================================
-
     learning_query = any(
         phrase in query_lower
         for phrase in [
-
             "teach me",
             "teach ",
             "learn ",
             "study ",
-
             "prepare me for",
             "help me prepare",
-
             "learning progression",
-
-            "theory example practice assessment"
+            "theory example practice assessment",
         ]
     )
-
-    # ======================================
-    # LIST QUESTION BANK QUERY
-    # ======================================
 
     list_question_bank_query = any(
         phrase in query_lower
         for phrase in [
-
             "what questions are included",
-
             "what questions are in",
-
             "which questions are included",
-
             "which questions are in",
-
             "list the questions",
-
             "list all questions",
-
             "all questions in the question bank",
-
             "questions included in the external question bank",
-
             "programs included in the question bank",
-
             "programs are included in the question bank",
-
             "show all questions",
-
-            "show the questions"
+            "show the questions",
         ]
     )
 
-    # ======================================
-    # TOPIC-WISE QUESTION QUERY
-    # ======================================
-
-    topic_question_query = is_topic_question_query(
-        query
+    topic_question_query = any(
+        phrase in query_lower
+        for phrase in [
+            "questions related to",
+            "question related to",
+            "questions about",
+            "question about",
+            "questions on",
+            "question on",
+        ]
     )
 
-    # ======================================
-    # LIST ALL QUESTION BANK QUESTIONS
-    # ======================================
+    # ==========================================================
+    # LIST ALL QUESTION-BANK QUESTIONS
+    # ==========================================================
 
     if list_question_bank_query:
 
         results = (
             rag.get_all_question_bank_documents(
                 subject=subject,
-                chapter=chapter
+                chapter=chapter,
             )
         )
 
         if not results:
 
             return {
-
-                "question":
-                    query,
-
-                "subject":
-                    subject,
-
-                "chapter":
-                    chapter,
-
-                "answer":
-                    (
-                        "No question bank "
-                        "material was found "
-                        "for the selected "
-                        "subject/chapter."
-                    ),
-
-                "sources":
-                    []
+                "question": query,
+                "subject": subject,
+                "chapter": chapter,
+                "answer": (
+                    "No question bank material was found "
+                    "for the selected subject/chapter."
+                ),
+                "sources": [],
             }
 
         answer_lines = [
             "Questions in the Question Bank:"
         ]
 
+        sources = []
+
+        seen = set()
+
         question_number = 1
-
-        seen_questions = set()
-
-        source_questions = []
 
         for result in results:
 
-            text = result.get(
-                "text",
-                ""
-            ).strip()
+            for question_text in split_question_bank_text(
+                result.get(
+                    "text",
+                    "",
+                )
+            ):
 
-            if not text:
-                continue
+                key = re.sub(
+                    r"\s+",
+                    " ",
+                    question_text.lower(),
+                ).strip()
 
-            parts = split_question_bank_text(
-                text
-            )
-
-            for part in parts:
-
-                normalized = part.strip()
-
-                if not normalized:
+                if key in seen:
                     continue
 
-                key = normalized.lower()
-
-                if key in seen_questions:
-                    continue
-
-                seen_questions.add(key)
+                seen.add(key)
 
                 answer_lines.append(
-                    f"{question_number}. "
-                    f"{normalized}"
+                    f"{question_number}. {question_text}"
                 )
 
-                # Preserve the original result
-                # so filename/metadata remains intact.
-                source = dict(result)
-
-                source["text"] = normalized
-
-                source_questions.append(
-                    source
+                sources.append(
+                    {
+                        "filename": result.get(
+                            "filename"
+                        ),
+                        "subject": result.get(
+                            "subject"
+                        ),
+                        "chapter": result.get(
+                            "chapter"
+                        ),
+                        "content_type": result.get(
+                            "content_type"
+                        ),
+                        "distance": result.get(
+                            "distance"
+                        ),
+                        "text": question_text,
+                    }
                 )
 
                 question_number += 1
 
-        answer = "\n".join(
-            answer_lines
-        )
-
-        total_time = (
-            time.perf_counter()
-            - request_start
-        )
-
-        print(
-            f"Question Bank listing time: "
-            f"{total_time:.2f}s"
-        )
-
         return {
-
-            "question":
-                query,
-
-            "subject":
-                subject,
-
-            "chapter":
-                chapter,
-
-            "answer":
-                answer,
-
-            "sources":
-                source_questions
+            "question": query,
+            "subject": subject,
+            "chapter": chapter,
+            "answer": "\n".join(
+                answer_lines
+            ),
+            "sources": sources,
         }
 
-    # ======================================
-    # TOPIC-WISE QUESTION BANK
-    # ======================================
+    # ==========================================================
+    # TOPIC-WISE QUESTION-BANK QUESTIONS
+    # ==========================================================
 
     if topic_question_query:
-
-        # ----------------------------------
-        # Extract actual topic
-        # ----------------------------------
 
         topic = clean_topic_query(
             query
         )
 
-        print(
-            f"Topic question request: "
-            f"{topic}"
-        )
+        if not topic:
 
-        # ----------------------------------
-        # Dedicated question-bank retrieval
-        # ----------------------------------
+            return {
+                "question": query,
+                "subject": subject,
+                "chapter": chapter,
+                "answer": (
+                    "Please specify a topic."
+                ),
+                "sources": [],
+            }
 
         results = (
             rag.get_topic_question_bank_documents(
                 topic=topic,
                 subject=subject,
                 chapter=chapter,
-                limit=10
+                limit=10,
             )
         )
 
-        matched_questions = []
+        (
+            matched_questions,
+            matched_sources,
+        ) = extract_matching_questions(
+            results,
+            topic,
+            limit=10,
+        )
 
-        matched_sources = []
-
-        seen_questions = set()
-
-        # ----------------------------------
-        # Check every individual question
-        # ----------------------------------
-
-        for result in results:
-
-            text = result.get(
-                "text",
-                ""
-            ).strip()
-
-            if not text:
-                continue
-
-            parts = split_question_bank_text(
-                text
-            )
-
-            for part in parts:
-
-                cleaned_question = part.strip()
-
-                if not cleaned_question:
-                    continue
-
-                # ----------------------------------
-                # ACTUAL TOPIC FILTER
-                # ----------------------------------
-
-                if not question_matches_topic(
-                    cleaned_question,
-                    topic
-                ):
-                    continue
-
-                key = cleaned_question.lower()
-
-                if key in seen_questions:
-                    continue
-
-                seen_questions.add(key)
-
-                matched_questions.append(
-                    cleaned_question
-                )
-
-                # ----------------------------------
-                # IMPORTANT:
-                # Preserve the original RAG result.
-                # This keeps filename, metadata,
-                # subject, chapter, distance, etc.
-                # ----------------------------------
-
-                source = dict(result)
-
-                source["text"] = cleaned_question
-
-                matched_sources.append(
-                    source
-                )
-
-        # ----------------------------------
-        # Matching questions found
-        # ----------------------------------
-
-        if matched_questions:
-
-            answer_lines = [
-                f"Questions related to {topic}:"
-            ]
-
-            for i, question_text in enumerate(
-                matched_questions,
-                start=1
-            ):
-
-                answer_lines.append(
-                    f"{i}. {question_text}"
-                )
-
-            answer = "\n".join(
-                answer_lines
-            )
-
-            total_time = (
-                time.perf_counter()
-                - request_start
-            )
-
-            print(
-                f"Topic question search time: "
-                f"{total_time:.2f}s"
-            )
+        if not matched_questions:
 
             return {
-
-                "question":
-                    query,
-
-                "subject":
-                    subject,
-
-                "chapter":
-                    chapter,
-
-                "answer":
-                    answer,
-
-                "sources":
-                    matched_sources
+                "question": query,
+                "subject": subject,
+                "chapter": chapter,
+                "answer": (
+                    f"No questions specifically related "
+                    f"to '{topic}' were found in the "
+                    f"uploaded question bank."
+                ),
+                "sources": [],
             }
 
-        # ----------------------------------
-        # No matching questions
-        # ----------------------------------
+        answer_lines = [
+            f"Questions related to {topic}:"
+        ]
 
-        total_time = (
-            time.perf_counter()
-            - request_start
-        )
+        for i, question_text in enumerate(
+            matched_questions,
+            1,
+        ):
 
-        print(
-            f"No exact topic questions found "
-            f"in {total_time:.2f}s"
-        )
+            answer_lines.append(
+                f"{i}. {question_text}"
+            )
 
         return {
-
-            "question":
-                query,
-
-            "subject":
-                subject,
-
-            "chapter":
-                chapter,
-
-            "answer":
-                (
-                    f"I couldn't find a question "
-                    f"specifically related to "
-                    f"'{topic}' in the uploaded "
-                    f"question bank."
-                ),
-
-            "sources":
-                []
+            "question": query,
+            "subject": subject,
+            "chapter": chapter,
+            "answer": "\n".join(
+                answer_lines
+            ),
+            "sources": matched_sources,
         }
 
-    # ======================================
+    # ==========================================================
     # LEARNING PROGRESSION
-    # ======================================
+    # ==========================================================
 
     if learning_query:
-
-        # ----------------------------------
-        # Extract topic
-        # ----------------------------------
 
         topic = query
 
@@ -1234,12 +1023,14 @@ def ask_question(
             "learn",
             "study",
             "prepare me for",
-            "help me prepare"
+            "help me prepare",
         ]
 
         for prefix in prefixes:
 
-            if query_lower.startswith(prefix):
+            if query_lower.startswith(
+                prefix
+            ):
 
                 topic = query[
                     len(prefix):
@@ -1247,276 +1038,248 @@ def ask_question(
 
                 break
 
-        # Remove common filler words
-
         topic = re.sub(
             r"^(about|on|the)\s+",
             "",
             topic,
-            flags=re.IGNORECASE
+            flags=re.IGNORECASE,
         ).strip()
 
         if not topic:
 
             return {
-
-                "question":
-                    query,
-
-                "subject":
-                    subject,
-
-                "chapter":
-                    chapter,
-
-                "answer":
-                    "Please specify a topic to learn.",
-
-                "sources":
-                    []
+                "question": query,
+                "subject": subject,
+                "chapter": chapter,
+                "answer": (
+                    "Please specify a topic to learn."
+                ),
+                "sources": [],
             }
-
-        # ----------------------------------
-        # Retrieve study material
-        # ----------------------------------
 
         results = rag.retrieve(
             topic,
-            k=5,
+            k=12,
             subject=subject,
-            chapter=chapter
+            chapter=chapter,
         )
 
-        # ----------------------------------
-        # Retrieve question-bank questions
-        # ----------------------------------
+        example_results = rag.retrieve(
+            f"{topic} Python code example implementation",
+            k=15,
+            subject=subject,
+            chapter=chapter,
+        )
+
+        combined_results = (
+            merge_document_results(
+                results,
+                example_results,
+            )
+        )
+
+        study_results = get_study_results(
+            combined_results
+        )
 
         question_results = (
             rag.get_topic_question_bank_documents(
                 topic=topic,
                 subject=subject,
                 chapter=chapter,
-                limit=10
+                limit=10,
             )
         )
 
-        practice_questions = []
+        (
+            practice_questions,
+            _,
+        ) = extract_matching_questions(
+            question_results,
+            topic,
+            limit=10,
+        )
 
-        seen_practice = set()
+        if not study_results:
 
-        for result in question_results:
-
-            question_text = result.get(
-                "text",
-                ""
-            ).strip()
-
-            if not question_text:
-                continue
-
-            parts = split_question_bank_text(
-                question_text
+            practice = (
+                "\n".join(
+                    f"{i}. {question}"
+                    for i, question in enumerate(
+                        practice_questions,
+                        start=1,
+                    )
+                )
+                if practice_questions
+                else (
+                    "No related practice questions "
+                    "were found in the uploaded "
+                    "question bank."
+                )
             )
 
-            for part in parts:
-
-                cleaned = part.strip()
-
-                if not cleaned:
-                    continue
-
-                if not question_matches_topic(
-                    cleaned,
-                    topic
-                ):
-                    continue
-
-                key = cleaned.lower()
-
-                if key in seen_practice:
-                    continue
-
-                seen_practice.add(key)
-
-                practice_questions.append(
-                    cleaned
+            assessment = (
+                "\n".join(
+                    f"{i}. {question}"
+                    for i, question in enumerate(
+                        practice_questions[:3],
+                        start=1,
+                    )
                 )
+                if practice_questions
+                else (
+                    "No separate assessment question "
+                    "is available in the uploaded "
+                    "question bank."
+                )
+            )
 
-        # ----------------------------------
-        # No study material
-        # ----------------------------------
-
-        if not results:
+            answer_parts = [
+                "THEORY",
+                "",
+                (
+                    "No supporting study material was "
+                    "found for this topic in the selected "
+                    "subject/chapter."
+                ),
+                "",
+                "EXAMPLE",
+                "",
+                (
+                    "No example was found in the "
+                    "uploaded study material."
+                ),
+                "",
+                "PRACTICE",
+                "",
+                practice,
+                "",
+                "ASSESSMENT",
+                "",
+                assessment,
+            ]
 
             return {
-
-                "question":
-                    query,
-
-                "subject":
-                    subject,
-
-                "chapter":
-                    chapter,
-
-                "answer":
-                    (
-                        "No relevant study "
-                        "material was found "
-                        "for this topic."
-                    ),
-
-                "sources":
-                    question_results
+                "question": query,
+                "subject": subject,
+                "chapter": chapter,
+                "answer": "\n".join(
+                    answer_parts
+                ),
+                "sources": question_results,
             }
 
-        # ----------------------------------
-        # Build study context
-        # ----------------------------------
-
         context = rag.build_context(
-            results
+            study_results[:12]
         )
 
-        # ----------------------------------
-        # Generate progression
-        # ----------------------------------
+        # ======================================================
+        # IMPORTANT FIX:
+        #
+        # Do NOT use only the first 20 retrieved chunks.
+        #
+        # Instead, collect ALL chunks belonging to the
+        # relevant source document(s). This allows the BFS
+        # example extractor to recover the complete example
+        # even when the code is split across many RAG chunks.
+        # ======================================================
+
+        example_context = (
+            get_example_source_context(
+                study_results,
+                subject=subject,
+                chapter=chapter,
+                max_source_files=2,
+            )
+        )
 
         answer = learning.learning_progression(
             topic,
             context,
-            practice_questions=practice_questions
-        )
-
-        total_time = (
-            time.perf_counter()
-            - request_start
+            practice_questions=practice_questions,
+            example_context=example_context,
         )
 
         print(
             f"Learning progression time: "
-            f"{total_time:.2f}s"
-        )
-
-        # ----------------------------------
-        # Combine sources
-        # ----------------------------------
-
-        combined_sources = (
-            results + question_results
+            f"{time.perf_counter() - request_start:.2f}s"
         )
 
         return {
-
-            "question":
-                query,
-
-            "subject":
-                subject,
-
-            "chapter":
-                chapter,
-
-            "answer":
-                answer,
-
-            "sources":
-                combined_sources
+            "topic": topic,
+            "subject": subject,
+            "chapter": chapter,
+            "answer": answer,
+            "sources": (
+                study_results
+                + question_results
+            ),
         }
 
-    # ======================================
+    # ==========================================================
     # NORMAL RAG QUESTION
-    # ======================================
+    # ==========================================================
 
     results = rag.retrieve(
         query,
-        k=5,
+        k=12,
         subject=subject,
-        chapter=chapter
+        chapter=chapter,
     )
 
-    # ======================================
-    # NO RESULTS
-    # ======================================
-
-    if not results:
-
-        return {
-
-            "question":
-                query,
-
-            "subject":
-                subject,
-
-            "chapter":
-                chapter,
-
-            "answer":
-                (
-                    "No relevant study "
-                    "material was found "
-                    "for the selected "
-                    "subject/chapter."
-                ),
-
-            "sources":
-                []
-        }
-
-    # ======================================
-    # BUILD CONTEXT
-    # ======================================
-
-    context = rag.build_context(
+    study_results = get_study_results(
         results
     )
 
-    # ======================================
-    # GENERATE ANSWER
-    # ======================================
+    if not study_results:
+
+        return {
+            "question": query,
+            "subject": subject,
+            "chapter": chapter,
+            "answer": (
+                "No relevant study material was "
+                "found for the selected subject/chapter."
+            ),
+            "sources": [],
+        }
+
+    context = rag.build_context(
+        study_results[:12]
+    )
+
+    example_context = (
+        get_example_source_context(
+            study_results,
+            subject=subject,
+            chapter=chapter,
+            max_source_files=2,
+        )
+    )
 
     answer = learning.solve_question(
         query,
-        context
-    )
-
-    total_time = (
-        time.perf_counter()
-        - request_start
+        context,
+        example_context=example_context,
     )
 
     print(
         f"Total /ask time: "
-        f"{total_time:.2f}s"
+        f"{time.perf_counter() - request_start:.2f}s"
     )
 
     return {
-
-        "question":
-            query,
-
-        "subject":
-            subject,
-
-        "chapter":
-            chapter,
-
-        "answer":
-            answer,
-
-        "sources":
-            results
+        "question": query,
+        "subject": subject,
+        "chapter": chapter,
+        "answer": answer,
+        "sources": study_results,
     }
 
 
-# ==========================================
-# 13. TOPIC EXPLANATION
-# ==========================================
-
 @app.post("/explain")
 def explain_topic(
-    data: TopicRequest
+    data: TopicRequest,
 ):
 
     topic = data.topic.strip()
@@ -1525,7 +1288,7 @@ def explain_topic(
 
         raise HTTPException(
             status_code=400,
-            detail="Topic cannot be empty."
+            detail="Topic cannot be empty.",
         )
 
     subject = (
@@ -1542,34 +1305,26 @@ def explain_topic(
 
     results = rag.retrieve(
         topic,
-        k=5,
+        k=8,
         subject=subject,
-        chapter=chapter
+        chapter=chapter,
+    )
+
+    results = get_study_results(
+        results
     )
 
     if not results:
 
         return {
-
-            "topic":
-                topic,
-
-            "subject":
-                subject,
-
-            "chapter":
-                chapter,
-
-            "answer":
-                (
-                    "No relevant study "
-                    "material was found "
-                    "for the selected "
-                    "subject/chapter."
-                ),
-
-            "sources":
-                []
+            "topic": topic,
+            "subject": subject,
+            "chapter": chapter,
+            "answer": (
+                "No relevant study material was "
+                "found for the selected subject/chapter."
+            ),
+            "sources": [],
         }
 
     context = rag.build_context(
@@ -1578,35 +1333,21 @@ def explain_topic(
 
     answer = learning.explain_topic(
         topic,
-        context
+        context,
     )
 
     return {
-
-        "topic":
-            topic,
-
-        "subject":
-            subject,
-
-        "chapter":
-            chapter,
-
-        "answer":
-            answer,
-
-        "sources":
-            results
+        "topic": topic,
+        "subject": subject,
+        "chapter": chapter,
+        "answer": answer,
+        "sources": results,
     }
 
 
-# ==========================================
-# 14. CONTENT SYNTHESIS
-# ==========================================
-
 @app.post("/synthesize")
 def synthesize_content(
-    data: TopicRequest
+    data: TopicRequest,
 ):
 
     topic = data.topic.strip()
@@ -1615,7 +1356,7 @@ def synthesize_content(
 
         raise HTTPException(
             status_code=400,
-            detail="Topic cannot be empty."
+            detail="Topic cannot be empty.",
         )
 
     subject = (
@@ -1632,34 +1373,26 @@ def synthesize_content(
 
     results = rag.retrieve(
         topic,
-        k=5,
+        k=8,
         subject=subject,
-        chapter=chapter
+        chapter=chapter,
+    )
+
+    results = get_study_results(
+        results
     )
 
     if not results:
 
         return {
-
-            "topic":
-                topic,
-
-            "subject":
-                subject,
-
-            "chapter":
-                chapter,
-
-            "answer":
-                (
-                    "No relevant study "
-                    "material was found "
-                    "for the selected "
-                    "subject/chapter."
-                ),
-
-            "sources":
-                []
+            "topic": topic,
+            "subject": subject,
+            "chapter": chapter,
+            "answer": (
+                "No relevant study material was "
+                "found for the selected subject/chapter."
+            ),
+            "sources": [],
         }
 
     context = rag.build_context(
@@ -1668,36 +1401,26 @@ def synthesize_content(
 
     answer = learning.synthesize_content(
         topic,
-        context
+        context,
     )
 
     return {
-
-        "topic":
-            topic,
-
-        "subject":
-            subject,
-
-        "chapter":
-            chapter,
-
-        "answer":
-            answer,
-
-        "sources":
-            results
+        "topic": topic,
+        "subject": subject,
+        "chapter": chapter,
+        "answer": answer,
+        "sources": results,
     }
 
 
-# ==========================================
-# 15. LEARNING PROGRESSION
-# ==========================================
-
 @app.post("/progression")
 def progression(
-    data: TopicRequest
+    data: TopicRequest,
 ):
+
+    request_start = (
+        time.perf_counter()
+    )
 
     topic = data.topic.strip()
 
@@ -1705,7 +1428,7 @@ def progression(
 
         raise HTTPException(
             status_code=400,
-            detail="Topic cannot be empty."
+            detail="Topic cannot be empty.",
         )
 
     subject = (
@@ -1720,188 +1443,199 @@ def progression(
         else None
     )
 
-    # --------------------------------------
-    # Retrieve study material
-    # --------------------------------------
-
     results = rag.retrieve(
         topic,
-        k=5,
+        k=12,
         subject=subject,
-        chapter=chapter
+        chapter=chapter,
     )
 
-    # --------------------------------------
-    # Retrieve question-bank questions
-    # --------------------------------------
+    example_results = rag.retrieve(
+        f"{topic} Python code example implementation",
+        k=15,
+        subject=subject,
+        chapter=chapter,
+    )
+
+    combined_results = (
+        merge_document_results(
+            results,
+            example_results,
+        )
+    )
+
+    study_results = get_study_results(
+        combined_results
+    )
 
     question_results = (
         rag.get_topic_question_bank_documents(
             topic=topic,
             subject=subject,
             chapter=chapter,
-            limit=10
+            limit=10,
         )
     )
 
-    practice_questions = []
+    (
+        practice_questions,
+        _,
+    ) = extract_matching_questions(
+        question_results,
+        topic,
+        limit=10,
+    )
 
-    seen_practice = set()
+    if not study_results:
 
-    for result in question_results:
-
-        question_text = result.get(
-            "text",
-            ""
-        ).strip()
-
-        if not question_text:
-            continue
-
-        parts = split_question_bank_text(
-            question_text
+        practice = (
+            "\n".join(
+                f"{i}. {question}"
+                for i, question in enumerate(
+                    practice_questions,
+                    start=1,
+                )
+            )
+            if practice_questions
+            else (
+                "No related practice questions "
+                "were found in the uploaded question bank."
+            )
         )
 
-        for part in parts:
-
-            cleaned = part.strip()
-
-            if not cleaned:
-                continue
-
-            if not question_matches_topic(
-                cleaned,
-                topic
-            ):
-                continue
-
-            key = cleaned.lower()
-
-            if key in seen_practice:
-                continue
-
-            seen_practice.add(key)
-
-            practice_questions.append(
-                cleaned
+        assessment = (
+            "\n".join(
+                f"{i}. {question}"
+                for i, question in enumerate(
+                    practice_questions[:3],
+                    start=1,
+                )
             )
+            if practice_questions
+            else (
+                "No separate assessment question "
+                "is available in the uploaded "
+                "question bank."
+            )
+        )
 
-    # --------------------------------------
-    # No study material
-    # --------------------------------------
-
-    if not results:
-
-        return {
-
-            "topic":
-                topic,
-
-            "subject":
-                subject,
-
-            "chapter":
-                chapter,
-
-            "answer":
+        answer = "\n".join(
+            [
+                "THEORY",
+                "",
                 (
-                    "No relevant study "
-                    "material was found "
-                    "for the selected "
+                    "No supporting study material was "
+                    "found for this topic in the selected "
                     "subject/chapter."
                 ),
+                "",
+                "EXAMPLE",
+                "",
+                (
+                    "No example was found in the "
+                    "uploaded study material."
+                ),
+                "",
+                "PRACTICE",
+                "",
+                practice,
+                "",
+                "ASSESSMENT",
+                "",
+                assessment,
+            ]
+        )
 
-            "sources":
-                question_results
+        return {
+            "topic": topic,
+            "subject": subject,
+            "chapter": chapter,
+            "answer": answer,
+            "sources": question_results,
         }
 
-    # --------------------------------------
-    # Build context
-    # --------------------------------------
-
     context = rag.build_context(
-        results
+        study_results[:12]
     )
 
-    # --------------------------------------
-    # Generate progression
-    # --------------------------------------
+    # ==========================================================
+    # FIXED:
+    #
+    # Previously the progression endpoint used:
+    #
+    # ordered_for_example = sorted(...)
+    # example_context = rag.build_context(
+    #     ordered_for_example[:20]
+    # )
+    #
+    # That only provided the first 20 retrieved chunks and
+    # caused the BFS example to be incomplete.
+    #
+    # Now we collect ALL chunks belonging to the relevant
+    # source document(s).
+    # ==========================================================
+
+    example_context = (
+        get_example_source_context(
+            study_results,
+            subject=subject,
+            chapter=chapter,
+            max_source_files=2,
+        )
+    )
 
     answer = learning.learning_progression(
         topic,
         context,
-        practice_questions=practice_questions
+        practice_questions=practice_questions,
+        example_context=example_context,
+    )
+
+    print(
+        f"Learning progression time: "
+        f"{time.perf_counter() - request_start:.2f}s"
     )
 
     return {
-
-        "topic":
-            topic,
-
-        "subject":
-            subject,
-
-        "chapter":
-            chapter,
-
-        "answer":
-            answer,
-
-        "sources":
-            results + question_results
+        "topic": topic,
+        "subject": subject,
+        "chapter": chapter,
+        "answer": answer,
+        "sources": (
+            study_results
+            + question_results
+        ),
     }
 
-
-# ==========================================
-# 16. LEARNING HISTORY
-# ==========================================
 
 @app.get("/history")
 def get_history():
 
     return {
-        "history":
-            learning.get_history()
+        "history": learning.get_history()
     }
 
-
-# ==========================================
-# 17. SUBJECTS
-# ==========================================
 
 @app.get("/subjects")
 def get_subjects():
 
     return {
-        "subjects":
-            rag.get_subjects()
+        "subjects": rag.get_subjects()
     }
 
-
-# ==========================================
-# 18. CHAPTERS
-# ==========================================
 
 @app.get("/chapters")
 def get_chapters(
-    subject: str | None = None
+    subject: str | None = None,
 ):
 
     return {
-
-        "subject":
-            subject,
-
-        "chapters":
-            rag.get_chapters(
-                subject
-            )
+        "subject": subject,
+        "chapters": rag.get_chapters(
+            subject
+        ),
     }
 
-
-# ==========================================
-# 19. DOCUMENT BROWSER
-# ==========================================
 
 @app.get("/documents")
 def get_documents():
@@ -1914,7 +1648,7 @@ def get_documents():
 
         file_path = os.path.join(
             DATA_FOLDER,
-            filename
+            filename,
         )
 
         exists = os.path.exists(
@@ -1923,78 +1657,56 @@ def get_documents():
 
         content_type = info.get(
             "content_type",
-            "Notes"
+            "Notes",
         )
 
         if content_type == "QuestionBank":
             content_type = "Question Bank"
 
-        documents.append({
-
-            "filename":
-                filename,
-
-            "subject":
-                info.get(
+        documents.append(
+            {
+                "filename": filename,
+                "subject": info.get(
                     "subject",
-                    "General"
+                    "General",
                 ),
-
-            "chapter":
-                info.get(
+                "chapter": info.get(
                     "chapter",
-                    "General"
+                    "General",
                 ),
-
-            "content_type":
-                content_type,
-
-            "format":
-                os.path.splitext(
-                    filename
-                )[1].replace(
-                    ".",
-                    ""
-                ).upper(),
-
-            "exists":
-                exists,
-
-            "size_bytes":
-                (
+                "content_type": content_type,
+                "format": (
+                    os.path.splitext(
+                        filename
+                    )[1]
+                    .replace(".", "")
+                    .upper()
+                ),
+                "exists": exists,
+                "size_bytes": (
                     os.path.getsize(
                         file_path
                     )
                     if exists
                     else 0
-                )
-        })
+                ),
+            }
+        )
 
     return {
-        "documents":
-            documents
+        "documents": documents
     }
 
 
-# ==========================================
-# 20. OPEN DOCUMENT
-# ==========================================
-
-@app.get(
-    "/document/{filename:path}"
-)
+@app.get("/document/{filename:path}")
 def open_document(
-    filename: str
+    filename: str,
 ):
 
     file_path = os.path.join(
         DATA_FOLDER,
-        filename
+        filename,
     )
-
-    # --------------------------------------
-    # Security check
-    # --------------------------------------
 
     data_folder_abs = os.path.abspath(
         DATA_FOLDER
@@ -2006,28 +1718,23 @@ def open_document(
 
     try:
 
-        common_path = os.path.commonpath([
-            data_folder_abs,
-            file_path_abs
-        ])
+        common_path = os.path.commonpath(
+            [
+                data_folder_abs,
+                file_path_abs,
+            ]
+        )
 
     except ValueError:
 
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid file path."
-        )
+        common_path = ""
 
     if common_path != data_folder_abs:
 
         raise HTTPException(
             status_code=400,
-            detail="Invalid file path."
+            detail="Invalid file path.",
         )
-
-    # --------------------------------------
-    # File existence
-    # --------------------------------------
 
     if not os.path.isfile(
         file_path_abs
@@ -2035,37 +1742,29 @@ def open_document(
 
         raise HTTPException(
             status_code=404,
-            detail="Document not found."
+            detail="Document not found.",
         )
 
-    # --------------------------------------
-    # Only PDF preview
-    # --------------------------------------
-
-    extension = os.path.splitext(
-        file_path_abs
-    )[1].lower()
-
-    if extension != ".pdf":
+    if (
+        os.path.splitext(
+            file_path_abs
+        )[1].lower()
+        != ".pdf"
+    ):
 
         raise HTTPException(
             status_code=400,
             detail=(
-                "Only PDF documents can "
-                "be opened directly in "
-                "the browser."
-            )
+                "Only PDF documents can be "
+                "opened directly in the browser."
+            ),
         )
-
-    # --------------------------------------
-    # Stream PDF
-    # --------------------------------------
 
     def file_iterator():
 
         with open(
             file_path_abs,
-            "rb"
+            "rb",
         ) as file:
 
             while True:
@@ -2080,19 +1779,15 @@ def open_document(
                 yield chunk
 
     return StreamingResponse(
-
         file_iterator(),
-
         media_type="application/pdf",
-
         headers={
-            "Content-Disposition":
-                (
-                    'inline; filename="'
-                    + os.path.basename(
-                        file_path_abs
-                    )
-                    + '"'
+            "Content-Disposition": (
+                'inline; filename="'
+                + os.path.basename(
+                    file_path_abs
                 )
-        }
+                + '"'
+            )
+        },
     )

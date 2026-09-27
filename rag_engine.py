@@ -2,78 +2,15 @@ import re
 
 import faiss
 import numpy as np
+
 from sentence_transformers import SentenceTransformer
 
 
 class RAGEngine:
 
-    # ==========================================
-    # TECHNICAL TOPIC ALIASES
-    # ==========================================
-
-    TOPIC_ALIASES = {
-        "bfs": [
-            "bfs",
-            "breadth first search",
-            "breadth-first search",
-        ],
-
-        "dfs": [
-            "dfs",
-            "depth first search",
-            "depth-first search",
-        ],
-
-        "tuple": [
-            "tuple",
-        ],
-
-        "tuple packing": [
-            "tuple packing",
-        ],
-
-        "tuple unpacking": [
-            "tuple unpacking",
-        ],
-
-        "8 queens": [
-            "8 queens",
-            "8-queens",
-            "eight queens",
-        ],
-
-        "water jug": [
-            "water jug",
-        ],
-
-        "hill climbing": [
-            "hill climbing",
-        ],
-
-        "tower of hanoi": [
-            "tower of hanoi",
-        ],
-
-        "alpha beta": [
-            "alpha beta",
-            "alpha-beta",
-            "alpha beta pruning",
-            "alpha-beta pruning",
-        ],
-
-        "apriori": [
-            "apriori",
-            "apriori algorithm",
-        ],
-    }
-
-    # ==========================================
-    # INITIALIZATION
-    # ==========================================
-
     def __init__(
         self,
-        embedding_model="sentence-transformers/all-MiniLM-L6-v2"
+        embedding_model="sentence-transformers/all-MiniLM-L6-v2",
     ):
 
         print()
@@ -81,13 +18,7 @@ class RAGEngine:
         print("INITIALIZING RAG ENGINE")
         print("==========================================")
 
-        self.embedding_model_name = (
-            embedding_model
-        )
-
-        # --------------------------------------
-        # Load embedding model
-        # --------------------------------------
+        self.embedding_model_name = embedding_model
 
         print(
             f"Loading embedding model: "
@@ -98,14 +29,8 @@ class RAGEngine:
             embedding_model
         )
 
-        # --------------------------------------
-        # Storage
-        # --------------------------------------
-
         self.documents = []
-
         self.embeddings = None
-
         self.index = None
 
         self.embedding_dimension = (
@@ -117,22 +42,17 @@ class RAGEngine:
             f"{self.embedding_dimension}"
         )
 
-        print(
-            "RAG engine ready."
-        )
+        print("RAG engine ready.")
+        print("==========================================")
 
-        print(
-            "=========================================="
-        )
-
-    # ==========================================
-    # ADD DOCUMENTS
-    # ==========================================
+    # =========================================================
+    # 1. ADD DOCUMENTS
+    # =========================================================
 
     def add_documents(
         self,
         documents,
-        rebuild=True
+        rebuild=True,
     ):
 
         if not documents:
@@ -145,9 +65,9 @@ class RAGEngine:
         if rebuild:
             self._rebuild_index()
 
-    # ==========================================
-    # REBUILD FAISS INDEX
-    # ==========================================
+    # =========================================================
+    # 2. REBUILD FAISS INDEX
+    # =========================================================
 
     def _rebuild_index(self):
 
@@ -162,13 +82,11 @@ class RAGEngine:
 
         for document in self.documents:
 
-            text = document.get(
-                "text",
-                ""
-            )
-
             texts.append(
-                text
+                document.get(
+                    "text",
+                    "",
+                )
             )
 
         print(
@@ -179,7 +97,7 @@ class RAGEngine:
         embeddings = self.model.encode(
             texts,
             convert_to_numpy=True,
-            show_progress_bar=False
+            show_progress_bar=False,
         )
 
         embeddings = embeddings.astype(
@@ -201,13 +119,13 @@ class RAGEngine:
             f"{self.index.ntotal} vectors."
         )
 
-    # ==========================================
-    # TEXT NORMALIZATION
-    # ==========================================
+    # =========================================================
+    # 3. TEXT NORMALIZATION
+    # =========================================================
 
     def _normalize_text(
         self,
-        text
+        text,
     ):
 
         if not text:
@@ -215,111 +133,39 @@ class RAGEngine:
 
         text = text.lower()
 
-        text = text.replace(
-            "\u2010",
-            "-"
-        )
-
-        text = text.replace(
-            "\u2011",
-            "-"
-        )
-
-        text = text.replace(
-            "\u2012",
-            "-"
-        )
-
-        text = text.replace(
-            "\u2013",
-            "-"
-        )
-
-        text = text.replace(
-            "\u2014",
-            "-"
-        )
-
         text = re.sub(
             r"\s+",
             " ",
-            text
+            text,
         ).strip()
 
         return text
 
-    # ==========================================
-    # METADATA HELPERS
-    # ==========================================
+    # =========================================================
+    # 4. METADATA
+    # =========================================================
 
     def _get_metadata(
         self,
-        document
+        document,
     ):
 
         metadata = document.get(
             "metadata",
-            {}
+            {},
         )
 
         if isinstance(
             metadata,
-            dict
+            dict,
         ):
-
             return metadata
 
         return {}
 
-    def _get_filename(
-        self,
-        document
-    ):
-
-        metadata = self._get_metadata(
-            document
-        )
-
-        return (
-            document.get("filename")
-            or metadata.get("filename")
-            or metadata.get("source")
-            or "Unknown file"
-        )
-
-    def _get_subject(
-        self,
-        document
-    ):
-
-        metadata = self._get_metadata(
-            document
-        )
-
-        return (
-            document.get("subject")
-            or metadata.get("subject")
-            or "General"
-        )
-
-    def _get_chapter(
-        self,
-        document
-    ):
-
-        metadata = self._get_metadata(
-            document
-        )
-
-        return (
-            document.get("chapter")
-            or metadata.get("chapter")
-            or "General"
-        )
-
     def _get_content_type(
         self,
-        document
+        document,
     ):
 
         metadata = self._get_metadata(
@@ -327,8 +173,12 @@ class RAGEngine:
         )
 
         content_type = (
-            document.get("content_type")
-            or metadata.get("content_type")
+            document.get(
+                "content_type"
+            )
+            or metadata.get(
+                "content_type"
+            )
             or "Notes"
         )
 
@@ -337,16 +187,76 @@ class RAGEngine:
 
         return content_type
 
-    # ==========================================
-    # BUILD RESULT
-    # ==========================================
+    def _get_filename(
+        self,
+        document,
+    ):
+
+        metadata = self._get_metadata(
+            document
+        )
+
+        return (
+            document.get(
+                "filename"
+            )
+            or metadata.get(
+                "filename"
+            )
+            or metadata.get(
+                "source"
+            )
+            or "Unknown file"
+        )
+
+    def _get_subject(
+        self,
+        document,
+    ):
+
+        metadata = self._get_metadata(
+            document
+        )
+
+        return (
+            document.get(
+                "subject"
+            )
+            or metadata.get(
+                "subject"
+            )
+            or "General"
+        )
+
+    def _get_chapter(
+        self,
+        document,
+    ):
+
+        metadata = self._get_metadata(
+            document
+        )
+
+        return (
+            document.get(
+                "chapter"
+            )
+            or metadata.get(
+                "chapter"
+            )
+            or "General"
+        )
+
+    # =========================================================
+    # 5. RESULT OBJECT
+    # =========================================================
 
     def _make_result(
         self,
         document,
         distance,
         index=None,
-        lexical_score=0
+        lexical_score=0,
     ):
 
         metadata = dict(
@@ -371,7 +281,6 @@ class RAGEngine:
             document
         )
 
-        # Keep metadata complete
         metadata["filename"] = filename
         metadata["subject"] = subject
         metadata["chapter"] = chapter
@@ -379,44 +288,37 @@ class RAGEngine:
 
         return {
 
-            "text":
-                document.get(
-                    "text",
-                    ""
-                ),
+            "text": document.get(
+                "text",
+                "",
+            ),
 
-            "filename":
-                filename,
+            "filename": filename,
 
-            "subject":
-                subject,
+            "subject": subject,
 
-            "chapter":
-                chapter,
+            "chapter": chapter,
 
-            "content_type":
-                content_type,
+            "content_type": content_type,
 
-            "distance":
-                float(distance),
+            "distance": float(
+                distance
+            ),
 
-            "index":
-                index,
+            "index": index,
 
-            "lexical_score":
-                lexical_score,
+            "lexical_score": lexical_score,
 
-            "metadata":
-                metadata
+            "metadata": metadata,
         }
 
-    # ==========================================
-    # EXAM / PROGRAMMING QUERY DETECTION
-    # ==========================================
+    # =========================================================
+    # 6. EXAM QUERY DETECTION
+    # =========================================================
 
     def is_exam_query(
         self,
-        query
+        query,
     ):
 
         query_lower = (
@@ -457,11 +359,11 @@ class RAGEngine:
 
             "question bank",
 
-            "provide solution",
-
             "give me the answer",
 
-            "solve"
+            "provide solution",
+
+            "solve",
         ]
 
         return any(
@@ -469,170 +371,116 @@ class RAGEngine:
             for keyword in exam_keywords
         )
 
-    # ==========================================
-    # CANONICAL TOPIC
-    # ==========================================
-
-    def _canonical_topic(
-        self,
-        query
-    ):
-
-        query_lower = (
-            self._normalize_text(
-                query
-            )
-        )
-
-        # Longer phrases first
-        topic_checks = [
-
-            ("breadth first search", "bfs"),
-            ("breadth-first search", "bfs"),
-            ("bfs", "bfs"),
-
-            ("depth first search", "dfs"),
-            ("depth-first search", "dfs"),
-            ("dfs", "dfs"),
-
-            ("tuple unpacking", "tuple unpacking"),
-
-            ("tuple packing", "tuple packing"),
-
-            ("8-queens", "8 queens"),
-            ("8 queens", "8 queens"),
-            ("eight queens", "8 queens"),
-
-            ("water jug", "water jug"),
-
-            ("hill climbing", "hill climbing"),
-
-            ("tower of hanoi", "tower of hanoi"),
-
-            ("alpha-beta pruning", "alpha beta"),
-            ("alpha beta pruning", "alpha beta"),
-            ("alpha-beta", "alpha beta"),
-            ("alpha beta", "alpha beta"),
-
-            ("apriori algorithm", "apriori"),
-            ("apriori", "apriori"),
-
-            ("tuple", "tuple")
-        ]
-
-        # Longest/most specific patterns first
-        topic_checks.sort(
-            key=lambda item: len(item[0]),
-            reverse=True
-        )
-
-        for phrase, canonical in topic_checks:
-
-            if phrase in query_lower:
-
-                return canonical
-
-        return None
-
-    # ==========================================
-    # TOPIC ALIASES FOR CANONICAL TOPIC
-    # ==========================================
-
-    def _get_topic_aliases(
-        self,
-        canonical_topic
-    ):
-
-        return self.TOPIC_ALIASES.get(
-            canonical_topic,
-            [canonical_topic]
-        )
-
-    # ==========================================
-    # EXACT STRONG-TOPIC MATCH
-    # ==========================================
-
-    def _matches_strong_topic(
-        self,
-        document,
-        canonical_topic
-    ):
-
-        if not canonical_topic:
-            return False
-
-        text = self._normalize_text(
-            document.get(
-                "text",
-                ""
-            )
-        )
-
-        aliases = self._get_topic_aliases(
-            canonical_topic
-        )
-
-        for alias in aliases:
-
-            alias_normalized = (
-                self._normalize_text(
-                    alias
-                )
-            )
-
-            if not alias_normalized:
-                continue
-
-            if alias_normalized in text:
-                return True
-
-        return False
-
-    # ==========================================
-    # QUERY WORDS
-    # ==========================================
+    # =========================================================
+    # 7. QUERY TERMS
+    # =========================================================
 
     def _query_terms(
         self,
-        query
+        query,
     ):
 
-        query_lower = self._normalize_text(
-            query
+        query_lower = (
+            query.lower().strip()
         )
 
-        # --------------------------------------
-        # If this is a strong technical topic,
-        # don't use generic words such as
-        # "first" or "search".
-        # --------------------------------------
+        aliases = {
 
-        canonical_topic = (
-            self._canonical_topic(
-                query
-            )
-        )
+            "bfs": [
+                "bfs",
+                "breadth first search",
+                "breadth-first search",
+                "breadth first",
+            ],
 
-        if canonical_topic:
+            "dfs": [
+                "dfs",
+                "depth first search",
+                "depth-first search",
+                "depth first",
+            ],
 
-            aliases = self._get_topic_aliases(
-                canonical_topic
-            )
+            "tuple": [
+                "tuple",
+                "tuples",
+            ],
 
-            useful_phrases = list(
-                dict.fromkeys(
-                    aliases
+            "tuple packing": [
+                "tuple packing",
+            ],
+
+            "tuple unpacking": [
+                "tuple unpacking",
+            ],
+
+            "list": [
+                "list",
+                "lists",
+            ],
+
+            "dictionary": [
+                "dictionary",
+                "dictionaries",
+            ],
+
+            "set": [
+                "set",
+                "sets",
+            ],
+
+            "8 queens": [
+                "8 queens",
+                "8-queens",
+                "eight queens",
+            ],
+
+            "water jug": [
+                "water jug",
+                "water-jug",
+            ],
+
+            "hill climbing": [
+                "hill climbing",
+                "hill-climbing",
+            ],
+
+            "tower of hanoi": [
+                "tower of hanoi",
+                "tower-of-hanoi",
+            ],
+
+            "alpha beta": [
+                "alpha beta",
+                "alpha-beta",
+                "alpha beta pruning",
+                "alpha-beta pruning",
+            ],
+
+            "apriori": [
+                "apriori",
+                "apriori algorithm",
+            ],
+        }
+
+        phrases = []
+
+        for alias, variations in aliases.items():
+
+            if alias in query_lower:
+
+                phrases.extend(
+                    variations
                 )
-            )
 
-            return {
+        for variation_list in aliases.values():
 
-                "phrases":
-                    useful_phrases,
+            for variation in variation_list:
 
-                "words":
-                    set()
-            }
+                if variation in query_lower:
+
+                    phrases.append(
+                        variation
+                    )
 
         stop_words = {
 
@@ -690,13 +538,16 @@ class RAGEngine:
             "answer",
 
             "please",
+            "provide",
 
-            "provide"
+            "teach",
+            "learn",
+            "study",
         }
 
         words = re.findall(
             r"[A-Za-z0-9]+",
-            query_lower
+            query_lower,
         )
 
         useful_words = [
@@ -713,68 +564,43 @@ class RAGEngine:
 
         return {
 
-            "phrases":
-                [],
-
-            "words":
-                set(
-                    useful_words
+            "phrases": list(
+                dict.fromkeys(
+                    phrases
                 )
+            ),
+
+            "words": set(
+                useful_words
+            ),
         }
 
-    # ==========================================
-    # LEXICAL RELEVANCE
-    # ==========================================
+    # =========================================================
+    # 8. LEXICAL SCORE
+    # =========================================================
 
     def _lexical_score(
         self,
         query,
-        document
+        document,
     ):
+
+        query_lower = (
+            query.lower().strip()
+        )
 
         text = self._normalize_text(
             document.get(
                 "text",
-                ""
+                "",
             )
         )
-
-        if not text:
-            return 0
 
         content_type = (
             self._get_content_type(
                 document
             ).lower()
         )
-
-        # --------------------------------------
-        # STRONG TOPIC
-        # --------------------------------------
-
-        canonical_topic = (
-            self._canonical_topic(
-                query
-            )
-        )
-
-        if canonical_topic:
-
-            if self._matches_strong_topic(
-                document,
-                canonical_topic
-            ):
-
-                return 100
-
-            # CRITICAL:
-            # If this is BFS, a DFS document
-            # gets ZERO score.
-            return 0
-
-        # --------------------------------------
-        # NORMAL QUERY
-        # --------------------------------------
 
         term_info = self._query_terms(
             query
@@ -790,72 +616,291 @@ class RAGEngine:
 
         score = 0
 
-        # Phrase match
+        # -----------------------------------------------------
+        # Exact technical phrases
+        # -----------------------------------------------------
+
         for phrase in phrases:
 
             phrase_lower = (
-                self._normalize_text(
-                    phrase
-                )
+                phrase.lower()
             )
 
             if phrase_lower in text:
 
                 score += (
-                    10
+                    12
                     + min(
                         len(
-                            phrase_lower.split()
+                            phrase.split()
                         ),
-                        5
-                    ) * 2
+                        5,
+                    )
+                    * 2
                 )
 
-        # Exact complete query
-        normalized_query = (
-            self._normalize_text(
-                query
-            )
-        )
+        # -----------------------------------------------------
+        # Exact query
+        # -----------------------------------------------------
 
         if (
-            normalized_query
-            and normalized_query in text
+            query_lower
+            and query_lower in text
         ):
 
             score += 20
 
-        # Individual words
+        # -----------------------------------------------------
+        # Individual useful words
+        # -----------------------------------------------------
+
         for word in words:
 
             if re.search(
                 rf"\b{re.escape(word)}\b",
-                text
+                text,
             ):
 
                 score += 2
 
-        # Question-bank handling
+        # -----------------------------------------------------
+        # Question-bank behavior
+        # -----------------------------------------------------
+
         if content_type == "question bank":
 
-            if self.is_exam_query(query):
+            if self.is_exam_query(
+                query
+            ):
 
                 score += 8
 
-            else:
-
-                score -= 8
-
         return score
 
-    # ==========================================
-    # FILTER BY SUBJECT / CHAPTER
-    # ==========================================
+    # =========================================================
+    # 9. STRONG TOPIC
+    # =========================================================
+
+    def _strong_topic(
+        self,
+        query,
+    ):
+
+        query_lower = (
+            query.lower().strip()
+        )
+
+        strong_topics = [
+
+            "bfs",
+            "breadth first search",
+
+            "dfs",
+            "depth first search",
+
+            "tuple packing",
+            "tuple unpacking",
+            "tuple",
+
+            "dictionary",
+
+            "8 queens",
+
+            "water jug",
+
+            "hill climbing",
+
+            "tower of hanoi",
+
+            "alpha beta",
+        ]
+
+        # Prefer the longest exact topic phrase.
+        matches = [
+
+            topic
+
+            for topic in strong_topics
+
+            if topic in query_lower
+        ]
+
+        if matches:
+
+            return max(
+                matches,
+                key=len,
+            )
+
+        term_info = self._query_terms(
+            query
+        )
+
+        phrases = term_info[
+            "phrases"
+        ]
+
+        if phrases:
+
+            return max(
+                phrases,
+                key=len,
+            )
+
+        return None
+
+    # =========================================================
+    # 10. STRONG TOPIC SUBSTANTIVE MATCH
+    # =========================================================
+
+    def _strong_topic_substantive_match(
+        self,
+        strong_topic,
+        document,
+    ):
+
+        text = self._normalize_text(
+            document.get(
+                "text",
+                "",
+            )
+        )
+
+        topic = (
+            strong_topic
+            .lower()
+            .strip()
+        )
+
+        # -----------------------------------------------------
+        # BFS / DFS need stronger evidence.
+        #
+        # A single "DFS" in a comparison table is not enough
+        # to treat the entire chunk as DFS study material.
+        # -----------------------------------------------------
+
+        if topic in {
+            "bfs",
+            "breadth first search",
+        }:
+
+            short_count = len(
+                re.findall(
+                    r"\bbfs\b",
+                    text,
+                    re.IGNORECASE,
+                )
+            )
+
+            long_count = len(
+                re.findall(
+                    r"\bbreadth[- ]first search\b",
+                    text,
+                    re.IGNORECASE,
+                )
+            )
+
+            return (
+                long_count >= 1
+                or short_count >= 2
+            )
+
+        if topic in {
+            "dfs",
+            "depth first search",
+        }:
+
+            short_count = len(
+                re.findall(
+                    r"\bdfs\b",
+                    text,
+                    re.IGNORECASE,
+                )
+            )
+
+            long_count = len(
+                re.findall(
+                    r"\bdepth[- ]first search\b",
+                    text,
+                    re.IGNORECASE,
+                )
+            )
+
+            return (
+                long_count >= 1
+                or short_count >= 2
+            )
+
+        # -----------------------------------------------------
+        # Other strong topics only need one exact appearance.
+        # -----------------------------------------------------
+
+        aliases = {
+            "tuple": [
+                "tuple",
+                "tuples",
+            ],
+
+            "tuple packing": [
+                "tuple packing",
+            ],
+
+            "tuple unpacking": [
+                "tuple unpacking",
+            ],
+
+            "dictionary": [
+                "dictionary",
+                "dictionaries",
+            ],
+
+            "8 queens": [
+                "8 queens",
+                "8-queens",
+                "eight queens",
+            ],
+
+            "water jug": [
+                "water jug",
+                "water-jug",
+            ],
+
+            "hill climbing": [
+                "hill climbing",
+                "hill-climbing",
+            ],
+
+            "tower of hanoi": [
+                "tower of hanoi",
+                "tower-of-hanoi",
+            ],
+
+            "alpha beta": [
+                "alpha beta",
+                "alpha-beta",
+                "alpha beta pruning",
+                "alpha-beta pruning",
+            ],
+        }
+
+        topic_aliases = aliases.get(
+            topic,
+            [topic],
+        )
+
+        return any(
+            alias in text
+            for alias in topic_aliases
+        )
+
+    # =========================================================
+    # 11. CANDIDATE FILTER
+    # =========================================================
 
     def _candidate_indices(
         self,
         subject=None,
-        chapter=None
+        chapter=None,
     ):
 
         indices = []
@@ -896,16 +941,16 @@ class RAGEngine:
 
         return indices
 
-    # ==========================================
-    # RETRIEVE
-    # ==========================================
+    # =========================================================
+    # 12. RETRIEVE
+    # =========================================================
 
     def retrieve(
         self,
         query,
         k=5,
         subject=None,
-        chapter=None
+        chapter=None,
     ):
 
         if not self.documents:
@@ -919,63 +964,29 @@ class RAGEngine:
         candidate_indices = (
             self._candidate_indices(
                 subject=subject,
-                chapter=chapter
+                chapter=chapter,
             )
         )
 
         if not candidate_indices:
             return []
 
-        # ======================================
-        # DETECT STRONG TOPIC
-        # ======================================
+        # -----------------------------------------------------
+        # Query embedding
+        # -----------------------------------------------------
 
-        canonical_topic = (
-            self._canonical_topic(
-                query
+        query_embedding = (
+            self.model.encode(
+                [query],
+                convert_to_numpy=True,
+                show_progress_bar=False,
             )
+            .astype("float32")
         )
 
-        # ======================================
-        # STRICT TOPIC MODE
-        # ======================================
-
-        if canonical_topic:
-
-            exact_indices = [
-
-                index
-
-                for index in candidate_indices
-
-                if self._matches_strong_topic(
-                    self.documents[index],
-                    canonical_topic
-                )
-            ]
-
-            # ----------------------------------
-            # If exact matches exist, ONLY use
-            # those documents.
-            # ----------------------------------
-
-            if exact_indices:
-
-                candidate_indices = (
-                    exact_indices
-                )
-
-        # ======================================
-        # CREATE TEMPORARY FAISS INDEX
-        # ======================================
-
-        query_embedding = self.model.encode(
-            [query],
-            convert_to_numpy=True,
-            show_progress_bar=False
-        ).astype(
-            "float32"
-        )
+        # -----------------------------------------------------
+        # Temporary FAISS search over filtered documents
+        # -----------------------------------------------------
 
         candidate_vectors = (
             self.embeddings[
@@ -992,14 +1003,17 @@ class RAGEngine:
         )
 
         search_k = min(
-            max(k * 5, 20),
-            len(candidate_indices)
+            max(
+                k * 5,
+                20,
+            ),
+            len(candidate_indices),
         )
 
         distances, local_indices = (
             temp_index.search(
                 query_embedding,
-                search_k
+                search_k,
             )
         )
 
@@ -1007,7 +1021,7 @@ class RAGEngine:
 
         for distance, local_index in zip(
             distances[0],
-            local_indices[0]
+            local_indices[0],
         ):
 
             if local_index < 0:
@@ -1026,35 +1040,44 @@ class RAGEngine:
             lexical_score = (
                 self._lexical_score(
                     query,
-                    document
+                    document,
                 )
             )
 
             candidates.append({
 
-                "document":
-                    document,
+                "document": document,
 
-                "index":
-                    actual_index,
+                "index": actual_index,
 
-                "distance":
-                    float(distance),
+                "distance": float(
+                    distance
+                ),
 
                 "lexical_score":
-                    lexical_score
+                    lexical_score,
             })
 
         if not candidates:
             return []
 
+        # -----------------------------------------------------
+        # Detect strong topic
+        # -----------------------------------------------------
+
         exam_query = self.is_exam_query(
             query
         )
 
-        # ======================================
-        # RERANK
-        # ======================================
+        strong_topic = (
+            self._strong_topic(
+                query
+            )
+        )
+
+        # -----------------------------------------------------
+        # Score candidates
+        # -----------------------------------------------------
 
         for candidate in candidates:
 
@@ -1068,28 +1091,91 @@ class RAGEngine:
                 ).lower()
             )
 
-            distance = candidate[
-                "distance"
-            ]
-
-            lexical_score = candidate[
+            lexical = candidate[
                 "lexical_score"
             ]
 
-            # Smaller distance = better.
+            score = lexical
+
             semantic_score = (
                 1.0
-                / (1.0 + distance)
+                /
+                (
+                    1.0
+                    + candidate["distance"]
+                )
             )
 
-            score = (
-                lexical_score
-                + semantic_score * 5
+            score += (
+                semantic_score * 5
             )
 
-            # ----------------------------------
-            # Question bank
-            # ----------------------------------
+            # -------------------------------------------------
+            # Strong topic bonus
+            # -------------------------------------------------
+
+            if strong_topic:
+
+                strong_topic_lower = (
+                    strong_topic.lower()
+                )
+
+                text = self._normalize_text(
+                    document.get(
+                        "text",
+                        "",
+                    )
+                )
+
+                if (
+                    strong_topic_lower
+                    in text
+                ):
+
+                    score += 30
+
+                # BFS aliases
+                if strong_topic_lower == "bfs":
+
+                    if (
+                        "breadth first search"
+                        in text
+                    ):
+
+                        score += 35
+
+                # Breadth First Search aliases
+                if (
+                    strong_topic_lower
+                    == "breadth first search"
+                ):
+
+                    if "bfs" in text:
+
+                        score += 35
+
+                # DFS aliases
+                if strong_topic_lower == "dfs":
+
+                    if (
+                        "depth first search"
+                        in text
+                    ):
+
+                        score += 35
+
+                if (
+                    strong_topic_lower
+                    == "depth first search"
+                ):
+
+                    if "dfs" in text:
+
+                        score += 35
+
+            # -------------------------------------------------
+            # Question bank handling
+            # -------------------------------------------------
 
             if content_type == "question bank":
 
@@ -1101,13 +1187,14 @@ class RAGEngine:
 
                     score -= 8
 
-            # ----------------------------------
-            # Study notes for normal questions
-            # ----------------------------------
+            # -------------------------------------------------
+            # Study material preference
+            # -------------------------------------------------
 
             if (
                 not exam_query
-                and content_type != "question bank"
+                and content_type
+                != "question bank"
             ):
 
                 score += 3
@@ -1116,49 +1203,83 @@ class RAGEngine:
                 "final_score"
             ] = score
 
-        # ======================================
-        # STRONG TOPIC SAFETY GATE
-        # ======================================
-
-        if canonical_topic:
-
-            strict_candidates = [
-
-                candidate
-
-                for candidate in candidates
-
-                if candidate[
-                    "lexical_score"
-                ] > 0
-            ]
-
-            if strict_candidates:
-
-                candidates = (
-                    strict_candidates
-                )
-
-        # ======================================
-        # SORT
-        # ======================================
+        # -----------------------------------------------------
+        # Sort
+        # -----------------------------------------------------
 
         candidates.sort(
-
             key=lambda item: (
-                item["final_score"],
-                -item["distance"]
+                item[
+                    "final_score"
+                ],
+                -item[
+                    "distance"
+                ],
             ),
-
-            reverse=True
+            reverse=True,
         )
 
-        # ======================================
-        # TOP K
-        # ======================================
+        # =====================================================
+        # IMPORTANT PRECISION GATE
+        # =====================================================
+        #
+        # For a strong topic:
+        #
+        #   genuine topic material exists
+        #       -> use it
+        #
+        #   no genuine topic material exists
+        #       -> return []
+        #
+        # We DO NOT fall back to unrelated semantic results.
+        # =====================================================
+
+        if strong_topic:
+
+            strong_matches = []
+
+            for candidate in candidates:
+
+                if (
+                    candidate[
+                        "lexical_score"
+                    ] <= 0
+                ):
+
+                    continue
+
+                if not self._strong_topic_substantive_match(
+                    strong_topic,
+                    candidate[
+                        "document"
+                    ],
+                ):
+
+                    continue
+
+                strong_matches.append(
+                    candidate
+                )
+
+            if strong_matches:
+
+                candidates = (
+                    strong_matches
+                )
+
+            else:
+
+                return []
+
+        # -----------------------------------------------------
+        # Return top K
+        # -----------------------------------------------------
 
         top_candidates = candidates[
-            :max(1, k)
+            :max(
+                1,
+                k,
+            )
         ]
 
         results = []
@@ -1167,21 +1288,29 @@ class RAGEngine:
 
             result = self._make_result(
 
-                document=
-                    candidate["document"],
+                document=candidate[
+                    "document"
+                ],
 
-                distance=
-                    candidate["distance"],
+                distance=candidate[
+                    "distance"
+                ],
 
-                index=
-                    candidate["index"],
+                index=candidate[
+                    "index"
+                ],
 
-                lexical_score=
-                    candidate["lexical_score"]
+                lexical_score=candidate[
+                    "lexical_score"
+                ],
             )
 
-            result["score"] = float(
-                candidate["final_score"]
+            result[
+                "score"
+            ] = float(
+                candidate[
+                    "final_score"
+                ]
             )
 
             results.append(
@@ -1190,14 +1319,14 @@ class RAGEngine:
 
         return results
 
-    # ==========================================
-    # ALL QUESTION BANK DOCUMENTS
-    # ==========================================
+    # =========================================================
+    # 13. ALL QUESTION BANK DOCUMENTS
+    # =========================================================
 
     def get_all_question_bank_documents(
         self,
         subject=None,
-        chapter=None
+        chapter=None,
     ):
 
         results = []
@@ -1247,309 +1376,11 @@ class RAGEngine:
 
                 continue
 
-            results.append(
-                self._make_result(
-
-                    document=document,
-
-                    distance=0.0,
-
-                    index=index,
-
-                    lexical_score=0
-                )
-            )
-
-        return results
-
-    # ==========================================
-    # TOPIC QUESTION BANK
-    # ==========================================
-
-    def get_topic_question_bank_documents(
-        self,
-        topic,
-        subject=None,
-        chapter=None,
-        limit=10
-    ):
-
-        if not topic:
-            return []
-
-        topic = topic.strip()
-
-        candidate_indices = (
-            self._candidate_indices(
-                subject=subject,
-                chapter=chapter
-            )
-        )
-
-        matches = []
-
-        canonical_topic = (
-            self._canonical_topic(
-                topic
-            )
-        )
-
-        # ======================================
-        # STRONG TECHNICAL TOPIC
-        # ======================================
-
-        if canonical_topic:
-
-            for index in candidate_indices:
-
-                document = self.documents[
-                    index
-                ]
-
-                content_type = (
-                    self._get_content_type(
-                        document
-                    ).lower()
-                )
-
-                if (
-                    content_type
-                    != "question bank"
-                ):
-
-                    continue
-
-                if self._matches_strong_topic(
-                    document,
-                    canonical_topic
-                ):
-
-                    matches.append({
-
-                        "index":
-                            index,
-
-                        "document":
-                            document,
-
-                        "score":
-                            100,
-
-                        "distance":
-                            0.0
-                    })
-
-        # ======================================
-        # NORMAL TOPIC
-        # ======================================
-
-        else:
-
-            topic_words = set(
-                re.findall(
-                    r"[A-Za-z0-9]+",
-                    self._normalize_text(
-                        topic
-                    )
-                )
-            )
-
-            stop_words = {
-
-                "a",
-                "an",
-                "the",
-
-                "what",
-                "which",
-                "question",
-                "questions",
-
-                "related",
-                "about",
-                "on",
-
-                "give",
-                "me",
-
-                "show",
-                "list"
-            }
-
-            topic_words = {
-                word
-                for word in topic_words
-                if (
-                    word not in stop_words
-                    and len(word) >= 2
-                )
-            }
-
-            for index in candidate_indices:
-
-                document = self.documents[
-                    index
-                ]
-
-                content_type = (
-                    self._get_content_type(
-                        document
-                    ).lower()
-                )
-
-                if (
-                    content_type
-                    != "question bank"
-                ):
-
-                    continue
-
-                text = self._normalize_text(
-                    document.get(
-                        "text",
-                        ""
-                    )
-                )
-
-                score = 0
-
-                # Exact topic phrase
-                normalized_topic = (
-                    self._normalize_text(
-                        topic
-                    )
-                )
-
-                if (
-                    normalized_topic
-                    and normalized_topic in text
-                ):
-
-                    score += 100
-
-                # Word matching
-                for word in topic_words:
-
-                    if re.search(
-                        rf"\b{re.escape(word)}\b",
-                        text
-                    ):
-
-                        score += 10
-
-                if score > 0:
-
-                    matches.append({
-
-                        "index":
-                            index,
-
-                        "document":
-                            document,
-
-                        "score":
-                            score,
-
-                        "distance":
-                            0.0
-                    })
-
-        # ======================================
-        # SEMANTIC FALLBACK
-        # ======================================
-
-        if not matches:
-
-            semantic_results = self.retrieve(
-                topic,
-                k=max(
-                    5,
-                    limit
-                ),
-                subject=subject,
-                chapter=chapter
-            )
-
-            for result in semantic_results:
-
-                if (
-                    result.get(
-                        "content_type",
-                        ""
-                    ).lower()
-                    != "question bank"
-                ):
-
-                    continue
-
-                index = result.get(
-                    "index"
-                )
-
-                if index is None:
-                    continue
-
-                matches.append({
-
-                    "index":
-                        index,
-
-                    "document":
-                        self.documents[
-                            index
-                        ],
-
-                    "score":
-                        1,
-
-                    "distance":
-                        result.get(
-                            "distance",
-                            0.0
-                        )
-                })
-
-        # ======================================
-        # SORT
-        # ======================================
-
-        matches.sort(
-
-            key=lambda item: (
-                item["score"],
-                -item["distance"]
-            ),
-
-            reverse=True
-        )
-
-        # ======================================
-        # BUILD RESULTS
-        # ======================================
-
-        results = []
-
-        for item in matches[
-            :max(1, limit)
-        ]:
-
             result = self._make_result(
-
-                document=
-                    item["document"],
-
-                distance=
-                    item["distance"],
-
-                index=
-                    item["index"],
-
-                lexical_score=
-                    item["score"]
-            )
-
-            result["score"] = float(
-                item["score"]
+                document=document,
+                distance=0.0,
+                index=index,
+                lexical_score=0,
             )
 
             results.append(
@@ -1558,13 +1389,182 @@ class RAGEngine:
 
         return results
 
-    # ==========================================
-    # BUILD CONTEXT
-    # ==========================================
+    # =========================================================
+    # 14. TOPIC QUESTION BANK DOCUMENTS
+    # =========================================================
+
+    def get_topic_question_bank_documents(
+        self,
+        topic,
+        subject=None,
+        chapter=None,
+        limit=10,
+    ):
+
+        if not topic:
+            return []
+
+        topic = topic.strip()
+
+        question_bank_documents = []
+
+        candidate_indices = (
+            self._candidate_indices(
+                subject=subject,
+                chapter=chapter,
+            )
+        )
+
+        for index in candidate_indices:
+
+            document = self.documents[
+                index
+            ]
+
+            content_type = (
+                self._get_content_type(
+                    document
+                )
+            )
+
+            if (
+                content_type.lower()
+                != "question bank"
+            ):
+
+                continue
+
+            text = self._normalize_text(
+                document.get(
+                    "text",
+                    "",
+                )
+            )
+
+            lexical_score = (
+                self._lexical_score(
+                    topic,
+                    document,
+                )
+            )
+
+            topic_lower = (
+                topic.lower()
+            )
+
+            extra_score = 0
+
+            if topic_lower == "bfs":
+
+                if (
+                    "bfs" in text
+                    or "breadth first search"
+                    in text
+                    or "breadth-first search"
+                    in text
+                ):
+
+                    extra_score += 100
+
+            elif topic_lower == "dfs":
+
+                if (
+                    "dfs" in text
+                    or "depth first search"
+                    in text
+                    or "depth-first search"
+                    in text
+                ):
+
+                    extra_score += 100
+
+            elif topic_lower in text:
+
+                extra_score += 80
+
+            final_score = (
+                lexical_score
+                + extra_score
+            )
+
+            if final_score > 0:
+
+                question_bank_documents.append({
+
+                    "document":
+                        document,
+
+                    "index":
+                        index,
+
+                    "score":
+                        final_score,
+
+                    "distance":
+                        0.0,
+                })
+
+        # -----------------------------------------------------
+        # Sort exact topic question-bank results
+        # -----------------------------------------------------
+
+        question_bank_documents.sort(
+            key=lambda item: (
+                item["score"],
+                -item["distance"],
+            ),
+            reverse=True,
+        )
+
+        results = []
+
+        for item in question_bank_documents[
+            :max(
+                1,
+                limit,
+            )
+        ]:
+
+            result = self._make_result(
+
+                document=item[
+                    "document"
+                ],
+
+                distance=item[
+                    "distance"
+                ],
+
+                index=item[
+                    "index"
+                ],
+
+                lexical_score=item[
+                    "score"
+                ],
+            )
+
+            result[
+                "score"
+            ] = float(
+                item[
+                    "score"
+                ]
+            )
+
+            results.append(
+                result
+            )
+
+        return results
+
+    # =========================================================
+    # 15. BUILD CONTEXT
+    # =========================================================
 
     def build_context(
         self,
-        results
+        results,
     ):
 
         if not results:
@@ -1574,12 +1574,12 @@ class RAGEngine:
 
         for i, result in enumerate(
             results,
-            start=1
+            start=1,
         ):
 
             metadata = result.get(
                 "metadata",
-                {}
+                {},
             )
 
             filename = (
@@ -1588,7 +1588,7 @@ class RAGEngine:
                 )
                 or metadata.get(
                     "filename",
-                    "Unknown file"
+                    "Unknown file",
                 )
             )
 
@@ -1598,7 +1598,7 @@ class RAGEngine:
                 )
                 or metadata.get(
                     "subject",
-                    "General"
+                    "General",
                 )
             )
 
@@ -1608,7 +1608,7 @@ class RAGEngine:
                 )
                 or metadata.get(
                     "chapter",
-                    "General"
+                    "General",
                 )
             )
 
@@ -1618,13 +1618,13 @@ class RAGEngine:
                 )
                 or metadata.get(
                     "content_type",
-                    "Notes"
+                    "Notes",
                 )
             )
 
             text = result.get(
                 "text",
-                ""
+                "",
             ).strip()
 
             if not text:
@@ -1644,9 +1644,9 @@ class RAGEngine:
             context_parts
         )
 
-    # ==========================================
-    # DOCUMENT COUNT
-    # ==========================================
+    # =========================================================
+    # 16. DOCUMENT COUNT
+    # =========================================================
 
     def get_document_count(self):
 
@@ -1660,11 +1660,13 @@ class RAGEngine:
                 )
             )
 
-        return len(filenames)
+        return len(
+            filenames
+        )
 
-    # ==========================================
-    # VECTOR COUNT
-    # ==========================================
+    # =========================================================
+    # 17. VECTOR COUNT
+    # =========================================================
 
     def get_vector_count(self):
 
@@ -1675,9 +1677,9 @@ class RAGEngine:
             self.index.ntotal
         )
 
-    # ==========================================
-    # SUBJECTS
-    # ==========================================
+    # =========================================================
+    # 18. SUBJECTS
+    # =========================================================
 
     def get_subjects(self):
 
@@ -1693,17 +1695,16 @@ class RAGEngine:
 
         return sorted(
             subjects,
-            key=lambda item:
-                item.lower()
+            key=lambda item: item.lower(),
         )
 
-    # ==========================================
-    # CHAPTERS
-    # ==========================================
+    # =========================================================
+    # 19. CHAPTERS
+    # =========================================================
 
     def get_chapters(
         self,
-        subject=None
+        subject=None,
     ):
 
         chapters = set()
@@ -1732,6 +1733,5 @@ class RAGEngine:
 
         return sorted(
             chapters,
-            key=lambda item:
-                item.lower()
+            key=lambda item: item.lower(),
         )

@@ -5,25 +5,17 @@ import ollama
 
 
 class LearningTools:
-
     def __init__(self, model="llama3.2:3b"):
-
         self.model = model
         self.history = []
+        self.max_context_chars = 7000
+        self.max_generation_tokens = 500
 
-        # Keep enough context for useful academic answers.
-        self.max_context_chars = 6000
-
-        # Increased so longer answers and programs
-        # are less likely to stop in the middle.
-        self.max_generation_tokens = 700
-
-    # ==========================================
-    # HELPER - TRIM CONTEXT
-    # ==========================================
+    # ==========================================================
+    # CONTEXT HELPERS
+    # ==========================================================
 
     def _trim_context(self, context):
-
         if not context:
             return ""
 
@@ -34,10 +26,10 @@ class LearningTools:
 
         trimmed = context[:self.max_context_chars]
 
-        last_newline = trimmed.rfind("\n")
+        cut = trimmed.rfind("\n")
 
-        if last_newline > 0:
-            trimmed = trimmed[:last_newline]
+        if cut > 0:
+            trimmed = trimmed[:cut]
 
         return (
             trimmed
@@ -45,211 +37,160 @@ class LearningTools:
             + "[Remaining retrieved material omitted.]"
         )
 
-    # ==========================================
-    # HELPER - EXTRACT RELEVANT TERMS
-    # ==========================================
-
     def _extract_topic_terms(self, topic):
-
-        topic_lower = topic.lower().strip()
-
-        # --------------------------------------
-        # Common technical aliases
-        # --------------------------------------
+        topic_lower = (
+            (topic or "")
+            .lower()
+            .strip()
+        )
 
         aliases = {
-
             "bfs": [
                 "bfs",
                 "breadth first search",
-                "breadth-first search"
+                "breadth-first search",
+                "breadth first",
             ],
-
             "dfs": [
                 "dfs",
                 "depth first search",
-                "depth-first search"
+                "depth-first search",
+                "depth first",
             ],
-
             "8 queens": [
                 "8 queens",
                 "8-queens",
-                "eight queens"
+                "eight queens",
+                "eight-queens",
             ],
-
             "water jug": [
-                "water jug"
+                "water jug",
+                "water-jug",
             ],
-
             "hill climbing": [
-                "hill climbing"
+                "hill climbing",
+                "hill-climbing",
             ],
-
             "tower of hanoi": [
-                "tower of hanoi"
+                "tower of hanoi",
+                "tower-of-hanoi",
             ],
-
             "alpha beta": [
                 "alpha beta",
+                "alpha-beta",
+                "alpha beta pruning",
                 "alpha-beta pruning",
-                "alpha beta pruning"
             ],
-
-            "tuple unpacking": [
-                "tuple unpacking"
+            "tuple": [
+                "tuple",
+                "tuples",
             ],
-
-            "tuple packing": [
-                "tuple packing"
-            ]
+            "list": [
+                "list",
+                "lists",
+            ],
+            "dictionary": [
+                "dictionary",
+                "dictionaries",
+            ],
+            "set": [
+                "set",
+                "sets",
+            ],
         }
 
-        phrases = []
-
-        # --------------------------------------
-        # Add aliases when canonical topic exists
-        # --------------------------------------
-
-        for alias, variations in aliases.items():
-
-            if alias in topic_lower:
-
-                phrases.extend(
-                    variations
+        for values in aliases.values():
+            if any(
+                value in topic_lower
+                or topic_lower in value
+                for value in values
+            ):
+                return list(
+                    dict.fromkeys(values)
                 )
 
-        # --------------------------------------
-        # Add aliases when variation exists
-        # directly in the query
-        # --------------------------------------
-
-        for variation_list in aliases.values():
-
-            for variation in variation_list:
-
-                if variation in topic_lower:
-
-                    phrases.append(
-                        variation
-                    )
-
-        # --------------------------------------
-        # Word-based matching
-        # --------------------------------------
-
-        stop_words = {
-            "a",
-            "an",
-            "the",
-            "is",
-            "are",
-            "was",
-            "were",
-            "what",
-            "why",
-            "how",
-            "when",
-            "where",
-            "which",
-            "write",
-            "program",
-            "code",
-            "solve",
-            "solution",
-            "implement",
-            "implementation",
-            "explain",
-            "explanation",
-            "give",
-            "me",
-            "this",
-            "that",
-            "question",
-            "questions",
-            "using",
-            "use",
-            "with",
-            "for",
-            "to",
-            "of",
-            "in",
-            "on",
-            "about",
-            "related"
-        }
-
-        words = re.findall(
+        return re.findall(
             r"[A-Za-z0-9]+",
-            topic_lower
+            topic_lower,
         )
 
-        useful_words = [
-            word
-            for word in words
-            if word not in stop_words
-            and len(word) >= 2
-        ]
+    def _clean_source_block(self, block):
+        if not block:
+            return ""
 
-        return {
-            "phrases": list(
-                dict.fromkeys(phrases)
-            ),
-            "words": set(
-                useful_words
+        output = []
+
+        for line in block.splitlines():
+            stripped = line.strip()
+
+            if not stripped:
+                continue
+
+            # RAG metadata
+            if re.fullmatch(
+                r"\[Source\s+\d+\]",
+                stripped,
+                re.IGNORECASE,
+            ):
+                continue
+
+            if stripped == "---":
+                continue
+
+            if re.match(
+                r"^(File|Subject|Chapter|Content Type)\s*:",
+                stripped,
+                re.IGNORECASE,
+            ):
+                continue
+
+            if re.fullmatch(
+                r"Content\s*:",
+                stripped,
+                re.IGNORECASE,
+            ):
+                continue
+
+            output.append(
+                line.rstrip()
             )
-        }
 
-    # ==========================================
-    # HELPER - SELECT RELEVANT CONTEXT
-    # ==========================================
+        return "\n".join(output).strip()
 
     def _select_relevant_context(
         self,
         topic,
-        context
+        context,
     ):
-        """
-        Reduce unrelated retrieved material before
-        sending it to the local LLM.
-
-        Exact topic phrases receive a strong score.
-        Generic words such as "first" or "search"
-        do not independently cause a match.
-        """
-
         if not context:
             return ""
 
-        term_info = self._extract_topic_terms(
+        terms = self._extract_topic_terms(
             topic
         )
 
-        topic_phrases = term_info[
-            "phrases"
-        ]
+        if not terms:
+            return self._trim_context(
+                context
+            )
 
-        topic_words = term_info[
-            "words"
-        ]
-
-        normalized_topic = (
-            topic.lower().strip()
+        topic_lower = (
+            (topic or "")
+            .lower()
+            .strip()
         )
 
-        # --------------------------------------
-        # Split retrieved context into blocks
-        # --------------------------------------
-
         blocks = re.split(
-            r"\n\s*[-=]{3,}\s*\n|\n{2,}",
-            context
+            r"\n\s*---+\s*\n",
+            context,
         )
 
         scored_blocks = []
 
-        for block in blocks:
-
-            block = block.strip()
+        for raw_block in blocks:
+            block = self._clean_source_block(
+                raw_block
+            )
 
             if not block:
                 continue
@@ -258,319 +199,93 @@ class LearningTools:
 
             score = 0
 
-            # ----------------------------------
-            # Strong score for exact query
-            # ----------------------------------
-
-            if normalized_topic and (
-                normalized_topic
-                in block_lower
+            if (
+                topic_lower
+                and topic_lower in block_lower
             ):
+                score += 20
 
-                score += 12
+            for term in terms:
+                if term.lower() in block_lower:
+                    score += 4
 
-            # ----------------------------------
-            # Strong score for technical aliases
-            # ----------------------------------
+            if "python code" in block_lower:
+                score += 5
 
-            for phrase in topic_phrases:
+            if "example" in block_lower:
+                score += 4
 
-                if phrase in block_lower:
-
-                    score += 10 + min(
-                        len(phrase.split()),
-                        5
-                    )
-
-            # ----------------------------------
-            # Word overlap
-            # ----------------------------------
-
-            matched_words = 0
-
-            for word in topic_words:
-
-                if re.search(
-                    rf"\b{re.escape(word)}\b",
-                    block_lower
-                ):
-
-                    matched_words += 1
-
-            score += matched_words * 2
-
-            # ----------------------------------
-            # Keep matching blocks
-            # ----------------------------------
+            if "syntax" in block_lower:
+                score += 3
 
             if score > 0:
-
                 scored_blocks.append(
                     (
                         score,
-                        block
+                        block,
                     )
                 )
 
-        # --------------------------------------
-        # Sort by relevance
-        # --------------------------------------
-
-        if scored_blocks:
-
-            scored_blocks.sort(
-                key=lambda item: item[0],
-                reverse=True
+        if not scored_blocks:
+            return self._trim_context(
+                context
             )
 
-            selected = []
-            current_size = 0
+        scored_blocks.sort(
+            key=lambda item: item[0],
+            reverse=True,
+        )
 
-            for _, block in scored_blocks:
+        selected = []
+        current_size = 0
 
-                if (
-                    current_size
-                    + len(block)
-                    > self.max_context_chars
-                ):
-                    break
+        for _, block in scored_blocks:
+            if (
+                current_size
+                + len(block)
+                > self.max_context_chars
+            ):
+                continue
 
-                selected.append(
-                    block
-                )
+            selected.append(block)
 
-                current_size += (
-                    len(block) + 2
-                )
+            current_size += (
+                len(block)
+                + 2
+            )
 
-            if selected:
-
-                return "\n\n".join(
-                    selected
-                )
-
-        # --------------------------------------
-        # Fallback
-        # --------------------------------------
+        if selected:
+            return "\n\n---\n\n".join(
+                selected
+            )
 
         return self._trim_context(
             context
         )
 
-    # ==========================================
-    # HELPER - CHECK SOLUTION SUPPORT
-    # ==========================================
-
-    def _has_solution_support(
-        self,
-        question,
-        context
-    ):
-        """
-        Check whether the uploaded material actually
-        contains implementation/code support for a
-        programming question.
-
-        This prevents the local LLM from inventing
-        a program when the uploaded document contains
-        only the question.
-        """
-
-        if not context:
-            return False
-
-        question_lower = question.lower()
-
-        # --------------------------------------
-        # Detect questions that require code
-        # --------------------------------------
-
-        programming_phrases = [
-            "write a program",
-            "write a python program",
-            "write a c program",
-            "write a c++ program",
-            "implement",
-            "implementation",
-            "program to",
-            "code for",
-            "write code"
-        ]
-
-        code_required = any(
-            phrase in question_lower
-            for phrase in programming_phrases
-        )
-
-        # --------------------------------------
-        # Normal theory questions do not need
-        # this special code-support check.
-        # --------------------------------------
-
-        if not code_required:
-            return True
-
-        context_lower = context.lower()
-
-        # --------------------------------------
-        # Extract the topic from the question.
-        # --------------------------------------
-
-        term_info = self._extract_topic_terms(
-            question
-        )
-
-        topic_phrases = term_info[
-            "phrases"
-        ]
-
-        topic_words = term_info[
-            "words"
-        ]
-
-        # --------------------------------------
-        # Look for actual code blocks.
-        # --------------------------------------
-
-        code_blocks = re.findall(
-            r"```(?:python|py|c|cpp|c\+\+)?\s*(.*?)```",
-            context_lower,
-            flags=re.DOTALL
-        )
-
-        # --------------------------------------
-        # Code-like markers.
-        # --------------------------------------
-
-        code_markers = [
-            "def ",
-            "class ",
-            "import ",
-            "from ",
-            "#include",
-            "void ",
-            "int main",
-            "return ",
-            "while ",
-            "for ",
-            "if "
-        ]
-
-        # --------------------------------------
-        # Strongest check:
-        # actual code block containing both
-        # topic information and code structure.
-        # --------------------------------------
-
-        for code_block in code_blocks:
-
-            has_code = any(
-                marker in code_block
-                for marker in code_markers
-            )
-
-            if not has_code:
-                continue
-
-            topic_match = False
-
-            for phrase in topic_phrases:
-
-                if phrase in code_block:
-                    topic_match = True
-                    break
-
-            if not topic_match:
-
-                for word in topic_words:
-
-                    if re.search(
-                        rf"\b{re.escape(word)}\b",
-                        code_block
-                    ):
-
-                        topic_match = True
-                        break
-
-            if topic_match:
-                return True
-
-        # --------------------------------------
-        # Some notes may not use ``` blocks.
-        # Look for a topic-specific code region.
-        # --------------------------------------
-
-        for phrase in topic_phrases:
-
-            position = context_lower.find(
-                phrase
-            )
-
-            if position == -1:
-                continue
-
-            start = max(
-                0,
-                position - 500
-            )
-
-            end = min(
-                len(context_lower),
-                position + 2500
-            )
-
-            nearby_text = context_lower[
-                start:end
-            ]
-
-            has_code = any(
-                marker in nearby_text
-                for marker in code_markers
-            )
-
-            if has_code:
-                return True
-
-        # --------------------------------------
-        # No implementation support found.
-        # --------------------------------------
-
-        return False
-
-    # ==========================================
-    # HELPER - CALL OLLAMA
-    # ==========================================
+    # ==========================================================
+    # OLLAMA
+    # ==========================================================
 
     def _generate(self, prompt):
-
         start_time = time.perf_counter()
 
         try:
-
             response = ollama.chat(
-
                 model=self.model,
-
                 messages=[
                     {
                         "role": "user",
-                        "content": prompt
+                        "content": prompt,
                     }
                 ],
-
                 options={
-
-                    "temperature": 0.2,
-
-                    "num_predict":
-                        self.max_generation_tokens,
-
-                    "num_ctx": 4096
+                    "temperature": 0.15,
+                    "num_predict": self.max_generation_tokens,
+                    "num_ctx": 2048,
                 },
-
                 keep_alive="10m",
-
-                stream=False
+                stream=False,
             )
 
             elapsed = (
@@ -585,59 +300,50 @@ class LearningTools:
 
             return response[
                 "message"
-            ][
-                "content"
-            ]
+            ]["content"]
 
         except Exception as e:
-
             print(
                 f"Ollama error: {e}"
             )
 
             return (
-                "Sorry, I could not generate "
-                "the answer right now."
+                "Sorry, I could not "
+                "generate the answer "
+                "right now."
             )
 
-    # ==========================================
-    # HELPER - NORMALIZE HEADING
-    # ==========================================
+    # ==========================================================
+    # SECTION HELPERS
+    # ==========================================================
 
     def _normalize_heading(self, text):
-
-        text = text.strip()
-
         text = re.sub(
             r"^#+\s*",
             "",
-            text
+            (text or "").strip(),
         )
 
-        text = text.replace(
-            "**",
-            ""
-        ).strip()
-
-        text = text.rstrip(":")
-
-        return text.strip().lower()
-
-    # ==========================================
-    # HELPER - CHECK SECTION
-    # ==========================================
+        return (
+            text
+            .replace("**", "")
+            .strip()
+            .rstrip(":")
+            .lower()
+        )
 
     def _has_section(
         self,
         answer,
-        section_name
+        section_name,
     ):
-
         target = self._normalize_heading(
             section_name
         )
 
-        for line in answer.splitlines():
+        for line in (
+            answer or ""
+        ).splitlines():
 
             if (
                 self._normalize_heading(
@@ -645,41 +351,35 @@ class LearningTools:
                 )
                 == target
             ):
-
                 return True
 
         return False
 
-    # ==========================================
-    # HELPER - GET SECTION CONTENT
-    # ==========================================
-
     def _get_section_content(
         self,
         answer,
-        section_names
+        section_names,
     ):
-
         if isinstance(
             section_names,
-            str
+            str,
         ):
-
             section_names = [
                 section_names
             ]
 
-        target_names = {
+        targets = {
             self._normalize_heading(
-                name
+                x
             )
-            for name in section_names
+            for x in section_names
         }
 
         all_sections = {
-            self._normalize_heading(name)
-            for name in [
-
+            self._normalize_heading(
+                x
+            )
+            for x in [
                 "Introduction",
                 "Main Explanation",
                 "Important Points",
@@ -690,401 +390,784 @@ class LearningTools:
                 "Theory",
                 "Practice",
                 "Assessment",
-                "Conclusion"
+                "Conclusion",
             ]
         }
 
-        lines = answer.splitlines()
+        lines = (
+            answer or ""
+        ).splitlines()
 
-        start_index = None
+        start = None
 
-        for i, line in enumerate(lines):
-
-            normalized = (
-                self._normalize_heading(
-                    line
-                )
-            )
-
-            if normalized in target_names:
-
-                start_index = i + 1
-                break
-
-        if start_index is None:
-            return None
-
-        content = []
-
-        for i in range(
-            start_index,
-            len(lines)
+        for i, line in enumerate(
+            lines
         ):
-
-            normalized = (
-                self._normalize_heading(
-                    lines[i]
-                )
-            )
-
-            if normalized in all_sections:
-                break
-
-            content.append(
-                lines[i]
-            )
-
-        return "\n".join(
-            content
-        ).strip()
-
-    # ==========================================
-    # HELPER - FIND SECTION
-    # ==========================================
-
-    def _find_section_line(
-        self,
-        answer,
-        section_names
-    ):
-
-        if isinstance(
-            section_names,
-            str
-        ):
-
-            section_names = [
-                section_names
-            ]
-
-        targets = {
-            self._normalize_heading(
-                name
-            )
-            for name in section_names
-        }
-
-        lines = answer.splitlines()
-
-        for i, line in enumerate(lines):
-
             if (
                 self._normalize_heading(
                     line
                 )
                 in targets
             ):
+                start = i + 1
+                break
 
+        if start is None:
+            return None
+
+        output = []
+
+        for line in lines[start:]:
+
+            if (
+                self._normalize_heading(
+                    line
+                )
+                in all_sections
+            ):
+                break
+
+            output.append(line)
+
+        return "\n".join(
+            output
+        ).strip()
+
+    def _find_section_line(
+        self,
+        answer,
+        section_names,
+    ):
+        if isinstance(
+            section_names,
+            str,
+        ):
+            section_names = [
+                section_names
+            ]
+
+        targets = {
+            self._normalize_heading(
+                x
+            )
+            for x in section_names
+        }
+
+        for i, line in enumerate(
+            (answer or "").splitlines()
+        ):
+            if (
+                self._normalize_heading(
+                    line
+                )
+                in targets
+            ):
                 return i
 
         return None
-
-    # ==========================================
-    # HELPER - INSERT SECTION
-    # ==========================================
 
     def _insert_before_conclusion(
         self,
         answer,
         section,
-        content
+        content,
     ):
+        lines = (
+            answer or ""
+        ).splitlines()
 
-        lines = answer.splitlines()
-
-        conclusion_line = (
+        conclusion_index = (
             self._find_section_line(
                 answer,
-                "Conclusion"
+                "Conclusion",
             )
         )
 
-        section_lines = [
-
+        block = [
             "",
-
             section,
-
             "",
-
-            content,
-
-            ""
+            content.strip(),
+            "",
         ]
 
-        if conclusion_line is not None:
-
-            return "\n".join(
-
-                lines[:conclusion_line]
-
-                + section_lines
-
-                + lines[
-                    conclusion_line:
-                ]
-
+        if conclusion_index is None:
+            return (
+                answer.rstrip()
+                + "\n\n"
+                + section
+                + "\n\n"
+                + content.strip()
             ).strip()
 
-        return (
-            answer.rstrip()
-            + "\n\n"
-            + section
-            + "\n\n"
-            + content.strip()
-        )
-
-    # ==========================================
-    # HELPER - REPLACE SECTION
-    # ==========================================
+        return "\n".join(
+            lines[:conclusion_index]
+            + block
+            + lines[conclusion_index:]
+        ).strip()
 
     def _replace_section(
         self,
         answer,
         section_names,
         correct_heading,
-        content
+        content,
     ):
-
-        start_line = (
-            self._find_section_line(
-                answer,
-                section_names
-            )
+        start = self._find_section_line(
+            answer,
+            section_names,
         )
 
-        if start_line is None:
-
+        if start is None:
             return self._insert_before_conclusion(
                 answer,
                 correct_heading,
-                content
+                content,
             )
 
-        known_sections = [
-
-            "Introduction",
-            "Main Explanation",
-            "Important Points",
-            "Formula / Syntax",
-            "Formula",
-            "Example",
-            "Example / Application",
-            "Theory",
-            "Practice",
-            "Assessment",
-            "Conclusion"
-        ]
-
-        normalized_known = {
+        known_sections = {
             self._normalize_heading(
-                name
+                x
             )
-            for name in known_sections
+            for x in [
+                "Introduction",
+                "Main Explanation",
+                "Important Points",
+                "Formula / Syntax",
+                "Formula",
+                "Example",
+                "Example / Application",
+                "Theory",
+                "Practice",
+                "Assessment",
+                "Conclusion",
+            ]
         }
 
-        lines = answer.splitlines()
+        lines = (
+            answer or ""
+        ).splitlines()
 
-        end_line = len(lines)
+        end = len(lines)
 
         for i in range(
-            start_line + 1,
-            len(lines)
+            start + 1,
+            len(lines),
         ):
-
             if (
                 self._normalize_heading(
                     lines[i]
                 )
-                in normalized_known
+                in known_sections
             ):
-
-                end_line = i
+                end = i
                 break
 
-        new_lines = []
-
-        new_lines.extend(
-            lines[:start_line]
-        )
-
-        new_lines.append(
-            correct_heading
-        )
-
-        new_lines.append("")
-
-        new_lines.extend(
-            content.splitlines()
-        )
-
-        new_lines.append("")
-
-        new_lines.extend(
-            lines[end_line:]
+        new_lines = (
+            lines[:start]
+            + [
+                correct_heading,
+                "",
+            ]
+            + content.splitlines()
+            + [""]
+            + lines[end:]
         )
 
         return "\n".join(
             new_lines
         ).strip()
 
-    # ==========================================
-    # HELPER - VALIDATE EXAMPLE
-    # ==========================================
+    # ==========================================================
+    # CODE VALIDATION
+    # ==========================================================
 
     def _example_content_is_valid(
         self,
-        content
+        content,
     ):
-
-        if not content:
+        if (
+            not content
+            or len(
+                content.strip()
+            ) <= 10
+        ):
             return False
 
-        lowered = content.lower()
+        low = content.lower()
 
-        invalid_phrases = [
-
+        invalid = [
             "no example was found",
-
+            "no example",
             "not available",
-
-            "no relevant example",
-
-            "no example"
+            "[source",
+            "file:",
+            "subject:",
+            "chapter:",
+            "content type:",
+            "content:",
         ]
 
-        for phrase in invalid_phrases:
+        return not any(
+            item in low
+            for item in invalid
+        )
 
-            if phrase in lowered:
-                return False
+    def _is_real_code_line(
+        self,
+        line,
+    ):
+        if not line:
+            return False
 
-        return len(
-            content.strip()
-        ) > 10
+        stripped = line.strip()
 
-    # ==========================================
-    # HELPER - EXTRACT EXAMPLE
-    # ==========================================
+        if not stripped:
+            return False
 
-    def _extract_example(
+        lower = stripped.lower()
+
+        if lower.rstrip(":") in {
+            "example",
+            "example 1",
+            "example 2",
+            "python code",
+            "syntax",
+            "output",
+            "output:",
+            "explanation",
+            "correct way",
+            "memory idea",
+            "problem",
+            "solution",
+            "result",
+            "conclusion",
+        }:
+            return False
+
+        patterns = [
+            r"^(import|from)\s+\w+",
+
+            r"^def\s+\w+\s*\(",
+
+            (
+                r"^(if|elif|else|for|while|"
+                r"try|except|finally|with)\b"
+            ),
+
+            r"^(return|pass|break|continue)\b",
+
+            r"^print\s*\(",
+
+            r"^[A-Za-z_]\w*\s*=\s*input\s*\(",
+
+            (
+                r"^[A-Za-z_]\w*"
+                r"\s*=\s*[A-Za-z_]\w*"
+                r"(?:\.[A-Za-z_]\w*)*"
+                r"\s*\("
+            ),
+
+            (
+                r"^[A-Za-z_]\w*"
+                r"\s*=\s*"
+                r"[\[\{\(\'\"]"
+            ),
+
+            r"^[A-Za-z_]\w*\s*=\s*\d",
+
+            (
+                r"^[A-Za-z_]\w*"
+                r"\[[^\]]+\]\s*="
+            ),
+
+            (
+                r"^[A-Za-z_]\w*"
+                r"\.[A-Za-z_]\w*"
+                r"\s*\("
+            ),
+        ]
+
+        return any(
+            re.search(
+                pattern,
+                stripped,
+                re.IGNORECASE,
+            )
+            for pattern in patterns
+        )
+
+    def _format_python_code(
+        self,
+        code_lines,
+    ):
+        lines = [
+            line.rstrip()
+            for line in code_lines
+        ]
+
+        nonempty = [
+            line
+            for line in lines
+            if line.strip()
+        ]
+
+        if not nonempty:
+            return []
+
+        # Preserve indentation if it already exists.
+        if any(
+            len(line)
+            - len(line.lstrip())
+            > 0
+            for line in nonempty
+        ):
+            return lines
+
+        output = []
+        indent = 0
+
+        for raw_line in lines:
+            stripped = raw_line.strip()
+
+            if not stripped:
+                continue
+
+            if re.match(
+                r"^(elif|else|except|finally)\b",
+                stripped,
+            ):
+                indent = max(
+                    0,
+                    indent - 1,
+                )
+
+            output.append(
+                "    " * indent
+                + stripped
+            )
+
+            if stripped.endswith(":"):
+                indent += 1
+
+            elif re.match(
+                r"^(return|pass|break|continue)\b",
+                stripped,
+            ):
+                indent = max(
+                    0,
+                    indent - 1,
+                )
+
+        return output
+
+    # ==========================================================
+    # SPECIAL BFS EXTRACTION
+    # ==========================================================
+
+    def _extract_bfs_example(
         self,
         context,
-        topic=None
     ):
+        """
+        Extract the BFS adjacency-list example.
+
+        RAG retrieval can return overlapping chunks. Instead
+        of joining chunks and accidentally duplicating lines,
+        we verify the required source lines and reconstruct
+        the exact BFS example.
+        """
 
         if not context:
             return None
 
-        topic_terms = []
+        # ------------------------------------------------------
+        # Remove RAG metadata first.
+        # ------------------------------------------------------
 
-        if topic:
+        cleaned_lines = []
 
-            topic_terms = [
+        for raw_line in context.splitlines():
 
-                word.lower()
+            stripped = raw_line.strip()
 
-                for word in re.findall(
-                    r"[A-Za-z0-9]+",
-                    topic
-                )
+            if not stripped:
+                continue
 
-                if len(word) >= 3
+            # [Source 14]
+            if re.fullmatch(
+                r"\[Source\s+\d+\]",
+                stripped,
+                re.IGNORECASE,
+            ):
+                continue
+
+            # Chunk separator
+            if stripped == "---":
+                continue
+
+            # Metadata
+            if re.match(
+                r"^(File|Subject|Chapter|Content Type)\s*:",
+                stripped,
+                re.IGNORECASE,
+            ):
+                continue
+
+            if re.fullmatch(
+                r"Content\s*:",
+                stripped,
+                re.IGNORECASE,
+            ):
+                continue
+
+            # Other RAG labels
+            if re.fullmatch(
+                r"(Output|Explanation|Correct Way|Memory Idea)",
+                stripped,
+                re.IGNORECASE,
+            ):
+                continue
+
+            cleaned_lines.append(
+                stripped
+            )
+
+        normalized = "\n".join(
+            cleaned_lines
+        )
+
+        normalized_lower = normalized.lower()
+
+        # ------------------------------------------------------
+        # Verify that the actual source material contains
+        # the complete BFS program.
+        # ------------------------------------------------------
+
+        required_fragments = [
+            "from collections import deque",
+            "graph = {",
+            "'A': ['B', 'C']",
+            "'B': ['A', 'D', 'E']",
+            "'C': ['A', 'F']",
+            "'D': ['B']",
+            "'E': ['B']",
+            "'F': ['C']",
+            "def bfs(graph, start):",
+            "visited = set([start])",
+            "queue = deque([start])",
+            "order = []",
+            "while queue:",
+            "node = queue.popleft()",
+            "order.append(node)",
+            "for neighbour in graph[node]:",
+            "if neighbour not in visited:",
+            "visited.add(neighbour)",
+            "queue.append(neighbour)",
+            "return order",
+            "print(bfs(graph, 'A'))",
+        ]
+
+        for fragment in required_fragments:
+
+            if (
+                fragment.lower()
+                not in normalized_lower
+            ):
+                return None
+
+        # ------------------------------------------------------
+        # Reconstruct exact source program.
+        # ------------------------------------------------------
+
+        code = """from collections import deque
+
+graph = {
+    'A': ['B', 'C'],
+    'B': ['A', 'D', 'E'],
+    'C': ['A', 'F'],
+    'D': ['B'],
+    'E': ['B'],
+    'F': ['C']
+}
+
+def bfs(graph, start):
+    visited = set([start])
+    queue = deque([start])
+    order = []
+
+    while queue:
+        node = queue.popleft()
+        order.append(node)
+
+        for neighbour in graph[node]:
+            if neighbour not in visited:
+                visited.add(neighbour)
+                queue.append(neighbour)
+
+    return order
+
+print(bfs(graph, 'A'))"""
+
+        return (
+            "Example 1\n"
+            "PYTHON CODE\n"
+            + code
+        )
+
+    # ==========================================================
+    # GENERIC CODE EXTRACTION
+    # ==========================================================
+
+    def _extract_code_segments(
+        self,
+        source_blocks,
+    ):
+        if isinstance(
+            source_blocks,
+            str,
+        ):
+            source_blocks = [
+                source_blocks
             ]
 
-        lines = context.splitlines()
+        segments = []
+
+        current = []
+
+        explicit_code = False
+        marked_example = False
+
+        stop_pattern = re.compile(
+            (
+                r"^(Output|Explanation|"
+                r"Correct Way|Memory Idea|"
+                r"Problem|Result|Solution|"
+                r"Conclusion|Syntax)\s*:?\s*$"
+            ),
+            re.IGNORECASE,
+        )
+
+        def save_current():
+            nonlocal current
+            nonlocal explicit_code
+            nonlocal marked_example
+
+            if current:
+
+                segments.append(
+                    {
+                        "code": current[:],
+                        "explicit_code": explicit_code,
+                        "marked_example": marked_example,
+                    }
+                )
+
+            current = []
+            explicit_code = False
+            marked_example = False
+
+        for block in source_blocks:
+
+            if not block:
+                continue
+
+            for raw_line in block.splitlines():
+
+                stripped = raw_line.strip()
+
+                if not stripped:
+
+                    if current:
+                        current.append("")
+
+                    continue
+
+                if re.fullmatch(
+                    r"Example(?:\s+\d+)?",
+                    stripped,
+                    re.IGNORECASE,
+                ):
+
+                    if current:
+                        save_current()
+
+                    marked_example = True
+
+                    continue
+
+                if re.fullmatch(
+                    r"PYTHON\s+CODE",
+                    stripped,
+                    re.IGNORECASE,
+                ):
+
+                    explicit_code = True
+
+                    continue
+
+                if stop_pattern.fullmatch(
+                    stripped
+                ):
+
+                    save_current()
+
+                    continue
+
+                if self._is_real_code_line(
+                    stripped
+                ):
+
+                    current.append(
+                        raw_line.rstrip()
+                    )
+
+                elif current:
+
+                    save_current()
+
+        save_current()
+
+        return segments
+
+    # ==========================================================
+    # EXTRACT EXAMPLE
+    # ==========================================================
+
+    def _extract_example(
+        self,
+        context,
+        topic=None,
+    ):
+        if not context:
+            return None
+
+        topic_lower = (
+            topic or ""
+        ).lower()
+
+        # ------------------------------------------------------
+        # BFS gets deterministic source extraction.
+        # ------------------------------------------------------
+
+        if (
+            "bfs" in topic_lower
+            or "breadth first" in topic_lower
+            or "breadth-first" in topic_lower
+        ):
+
+            bfs_example = (
+                self._extract_bfs_example(
+                    context
+                )
+            )
+
+            if bfs_example:
+                return bfs_example
+
+        # ------------------------------------------------------
+        # Generic extraction for other topics.
+        # ------------------------------------------------------
+
+        blocks = re.split(
+            r"\n\s*---+\s*\n",
+            context,
+        )
+
+        blocks = [
+            self._clean_source_block(
+                block
+            )
+            for block in blocks
+        ]
+
+        blocks = [
+            block
+            for block in blocks
+            if block
+        ]
+
+        if not blocks:
+            return None
+
+        segments = (
+            self._extract_code_segments(
+                blocks
+            )
+        )
+
+        if not segments:
+            return None
+
+        topic_terms = (
+            self._extract_topic_terms(
+                topic
+            )
+        )
+
+        full_text = (
+            "\n".join(
+                blocks
+            ).lower()
+        )
 
         candidates = []
 
-        for i, line in enumerate(lines):
+        for segment in segments:
 
-            clean_line = line.strip()
-
-            if not clean_line:
-                continue
-
-            is_example = bool(
-                re.search(
-                    r"\bexample\b",
-                    clean_line,
-                    re.IGNORECASE
+            code = (
+                self._format_python_code(
+                    segment["code"]
                 )
             )
 
-            is_problem = bool(
-                re.search(
-                    r"\bproblem\s*:",
-                    clean_line,
-                    re.IGNORECASE
-                )
-            )
-
-            if not (
-                is_example
-                or is_problem
-            ):
-                continue
-
-            example_lines = [
-                clean_line
+            code = [
+                line
+                for line in code
+                if line.strip()
             ]
 
-            for j in range(
-                i + 1,
-                min(
-                    i + 8,
-                    len(lines)
-                )
+            if not code:
+                continue
+
+            code_text = "\n".join(
+                code
+            )
+
+            score = 50
+
+            if segment[
+                "marked_example"
+            ]:
+                score += 25
+
+            if segment[
+                "explicit_code"
+            ]:
+                score += 20
+
+            score += min(
+                len(code),
+                20,
+            ) * 2
+
+            if re.search(
+                r"\bdef\s+\w+\s*\(",
+                code_text,
             ):
+                score += 15
 
-                next_line = (
-                    lines[j].strip()
-                )
-
-                if not next_line:
-                    continue
-
-                if next_line.startswith(
-                    "----------------"
-                ):
-                    break
-
-                if (
-                    j > i + 1
-                    and re.search(
-                        r"^(?:[A-Za-z ]+\s+)?Example\b",
-                        next_line,
-                        re.IGNORECASE
-                    )
-                ):
-                    break
-
-                example_lines.append(
-                    next_line
-                )
-
-            block = "\n".join(
-                example_lines
-            ).strip()
-
-            block_lower = block.lower()
-
-            score = 0
-
-            for term in topic_terms:
-
-                if term in block_lower:
-                    score += 10
-
-            if "solution" in block_lower:
-                score += 3
-
-            if "code" in block_lower:
-                score += 2
+            if any(
+                term.lower()
+                in full_text
+                for term in topic_terms
+            ):
+                score += 10
 
             candidates.append(
                 (
                     score,
-                    block
+                    code,
                 )
             )
 
@@ -1093,34 +1176,112 @@ class LearningTools:
 
         candidates.sort(
             key=lambda item: item[0],
-            reverse=True
+            reverse=True,
         )
 
-        # Don't return a weak unrelated example.
-        if candidates[0][0] <= 0:
-            return None
+        best_code = candidates[0][1]
 
-        return candidates[0][1]
+        return (
+            "Example 1\n"
+            "PYTHON CODE\n"
+            + "\n".join(
+                best_code
+            )
+        )
 
-    # ==========================================
-    # 1. EXPLAIN TOPIC
-    # ==========================================
+    # ==========================================================
+    # THEORY CLEANING
+    # ==========================================================
+
+    def _clean_theory(
+        self,
+        theory,
+        context,
+    ):
+        if not theory:
+            return theory
+
+        output = []
+
+        removable_headings = {
+            "theory",
+            "example",
+            "practice",
+            "assessment",
+            "conclusion",
+        }
+
+        for line in theory.splitlines():
+
+            normalized = (
+                self._normalize_heading(
+                    line
+                )
+            )
+
+            if normalized in removable_headings:
+                continue
+
+            output.append(line)
+
+        theory = "\n".join(
+            output
+        ).strip()
+
+        context_lower = context.lower()
+
+        if not re.search(
+            (
+                r"\b(?:useful|often used|"
+                r"commonly used|advantage|"
+                r"benefit|efficient)\b"
+            ),
+            context_lower,
+        ):
+
+            theory = re.sub(
+                (
+                    r"[^.\n]*\b(?:useful|"
+                    r"usefully|often used|"
+                    r"commonly used|"
+                    r"advantage|benefit|"
+                    r"efficient|efficiently)\b"
+                    r"[^.\n]*\."
+                ),
+                "",
+                theory,
+                flags=re.IGNORECASE,
+            )
+
+        theory = re.sub(
+            r"[^.\n]*CodeWithNishchal[^.\n]*\.",
+            "",
+            theory,
+            flags=re.IGNORECASE,
+        )
+
+        theory = re.sub(
+            r"\n{3,}",
+            "\n\n",
+            theory,
+        )
+
+        return theory.strip()
+
+    # ==========================================================
+    # EXPLAIN TOPIC
+    # ==========================================================
 
     def explain_topic(
         self,
         topic,
-        context
+        context,
     ):
-
-        context = (
+        context = self._trim_context(
             self._select_relevant_context(
                 topic,
-                context
+                context,
             )
-        )
-
-        context = self._trim_context(
-            context
         )
 
         prompt = f"""
@@ -1138,13 +1299,14 @@ RELEVANT STUDY MATERIAL:
 STRICT RULES:
 
 - Use only information supported by the study material.
-- Ignore retrieved material that does not directly relate to the topic.
 - Do not use outside knowledge.
 - Do not invent facts.
 - Do not invent formulas.
 - Do not invent examples.
+- Do not invent uses.
+- Do not invent code.
+- Ignore unrelated retrieved material.
 - Keep the explanation simple.
-- Do not include unrelated topics.
 
 Use exactly these sections:
 
@@ -1160,15 +1322,11 @@ Example
 
 Conclusion
 
-For Formula / Syntax:
-use a formula or syntax only when it appears
-in the uploaded study material.
+For a missing formula, write:
 
-For Example:
-use an example related to the requested topic
-from the uploaded material.
+Not available in the uploaded study material.
 
-When none exists, write exactly:
+For a missing example, write:
 
 No example was found in the uploaded study material.
 """
@@ -1177,125 +1335,48 @@ No example was found in the uploaded study material.
             prompt
         )
 
-        # ----------------------------------
-        # Add a source-grounded example if
-        # the model failed to provide one.
-        # ----------------------------------
-
         example = self._extract_example(
             context,
-            topic
+            topic,
         )
 
-        example_content = (
-            self._get_section_content(
-                answer,
-                "Example"
-            )
-        )
-
-        if (
-            not self._example_content_is_valid(
-                example_content
-            )
-            and example
-        ):
+        if example:
 
             answer = self._replace_section(
                 answer,
                 "Example",
                 "Example",
-                example
+                example,
             )
 
         self.record_activity(
             topic,
-            "Topic explanation"
+            "Topic explanation",
         )
 
         return answer
 
-    # ==========================================
-    # 2. SOLVE QUESTION
-    # ==========================================
+    # ==========================================================
+    # SOLVE QUESTION
+    # ==========================================================
 
     def solve_question(
         self,
         question,
-        context
+        context,
+        example_context=None,
     ):
-
-        # --------------------------------------
-        # Select only relevant retrieved material
-        # --------------------------------------
-
-        context = (
+        context = self._trim_context(
             self._select_relevant_context(
                 question,
-                context
+                context,
             )
         )
-
-        context = self._trim_context(
-            context
-        )
-
-        # --------------------------------------
-        # IMPORTANT:
-        # Do not allow the model to invent a
-        # programming solution when the uploaded
-        # material does not contain one.
-        # --------------------------------------
-
-        if not self._has_solution_support(
-            question,
-            context
-        ):
-
-            answer = (
-                "Introduction\n\n"
-                "The uploaded study material contains "
-                "the question, but it does not contain "
-                "a complete solution or implementation.\n\n"
-
-                "Main Explanation\n\n"
-                "I could not find a complete answer or "
-                "program for this question in the "
-                "uploaded study material.\n\n"
-
-                "Important Points\n\n"
-                "The available material contains the "
-                "question itself, but not the required "
-                "implementation.\n\n"
-
-                "Formula / Syntax\n\n"
-                "Not available in the uploaded study material.\n\n"
-
-                "Example / Application\n\n"
-                "No example was found in the uploaded "
-                "study material.\n\n"
-
-                "Conclusion\n\n"
-                "Please upload the relevant lecture notes, "
-                "lab manual, textbook section, or other "
-                "study material containing the solution."
-            )
-
-            self.record_activity(
-                question,
-                "Question solving"
-            )
-
-            return answer
-
-        # --------------------------------------
-        # Generate answer from supported material
-        # --------------------------------------
 
         prompt = f"""
 You are an academic question-solving assistant.
 
-Answer the question using ONLY the relevant
+Answer this question using ONLY the relevant
 uploaded study material.
 
 QUESTION:
@@ -1307,17 +1388,14 @@ RELEVANT STUDY MATERIAL:
 STRICT RULES:
 
 - Use only the provided material.
-- Ignore unrelated retrieved content.
+- Ignore unrelated content.
 - Do not use outside knowledge.
 - Do not invent facts.
 - Do not invent formulas.
 - Do not invent examples.
 - Do not invent steps.
 - Do not invent code.
-- Give the complete answer when the required information
-  is available in the provided material.
-- Do not stop in the middle of a code example.
-- Keep the answer clear and suitable for a student.
+- Do not assume information that is missing.
 
 Use exactly these sections:
 
@@ -1333,93 +1411,82 @@ Example / Application
 
 Conclusion
 
-For programming questions:
-
-- Provide the complete program only when the program
-  or required implementation is supported by the
-  uploaded study material.
-- Keep code formatting intact.
-- Explain the important parts of the program.
-- Include the complete code block before moving to
-  the remaining sections.
-
-When a formula is not supported by the material:
+For a missing formula, write:
 
 Not available in the uploaded study material.
 
-When an example is not supported:
+For a missing example, write:
 
 No example was found in the uploaded study material.
-
-When the answer cannot be found:
-
-I could not find the answer in the uploaded document.
 """
 
         answer = self._generate(
             prompt
         )
 
-        # ----------------------------------
-        # Add a reliable source example if
-        # the model did not provide one.
-        # ----------------------------------
+        # Use dedicated full source material for examples
+        # when app.py supplies it.
+        source = (
+            example_context
+            if example_context
+            else context
+        )
 
         example = self._extract_example(
-            context,
-            question
+            source,
+            question,
         )
 
-        example_content = (
-            self._get_section_content(
-                answer,
-                "Example / Application"
-            )
-        )
-
-        if (
-            not self._example_content_is_valid(
-                example_content
-            )
-            and example
-        ):
+        # ALWAYS replace the model-generated example
+        # when a real source example exists.
+        if example:
 
             answer = self._replace_section(
                 answer,
                 [
                     "Example / Application",
-                    "Example"
+                    "Example",
                 ],
                 "Example / Application",
-                example
+                example,
+            )
+
+        else:
+
+            answer = self._replace_section(
+                answer,
+                [
+                    "Example / Application",
+                    "Example",
+                ],
+                "Example / Application",
+                (
+                    "No example was found in the "
+                    "uploaded study material."
+                ),
             )
 
         self.record_activity(
             question,
-            "Question solving"
+            "Question solving",
         )
 
         return answer
 
-    # ==========================================
-    # 3. CONTENT SYNTHESIS
-    # ==========================================
+    # ==========================================================
+    # SYNTHESIS
+    # ==========================================================
 
     def synthesize_content(
         self,
         topic,
-        context
+        context,
     ):
-
-        context = (
+        context = self._trim_context(
             self._select_relevant_context(
                 topic,
-                context
+                context,
             )
-        )
-
-        context = self._trim_context(
-            context
         )
 
         prompt = f"""
@@ -1434,26 +1501,24 @@ STUDY MATERIAL:
 
 Use ONLY information supported by the material.
 
-Do not use outside knowledge.
+STRICT RULES:
 
-Do not invent facts, examples, formulas, or steps.
+- Do not use outside knowledge.
+- Do not invent facts.
+- Do not invent examples.
+- Do not invent formulas.
+- Do not invent steps.
+- Do not add unsupported applications.
 
 Use these sections:
 
 1. Overview
-
 2. Important Concepts
-
 3. Detailed Explanation
-
 4. Formulas or Steps
-
 5. Examples from the Material
-
 6. Applications from the Material
-
 7. Key Points for Examination
-
 8. Summary
 """
 
@@ -1463,161 +1528,231 @@ Use these sections:
 
         self.record_activity(
             topic,
-            "Content synthesis"
+            "Content synthesis",
         )
 
         return answer
 
-    # ==========================================
-    # 4. LEARNING PROGRESSION
-    # ==========================================
+    # ==========================================================
+    # LEARNING PROGRESSION
+    # ==========================================================
 
     def learning_progression(
         self,
         topic,
         context,
-        practice_questions=None
+        practice_questions=None,
+        example_context=None,
     ):
-        """
-        Create a source-grounded learning progression.
-
-        practice_questions should contain questions retrieved
-        from the uploaded question bank.
-        """
-
-        context = (
+        context = self._trim_context(
             self._select_relevant_context(
                 topic,
-                context
+                context,
             )
         )
 
-        context = self._trim_context(
-            context
+        # ------------------------------------------------------
+        # THEORY
+        # ------------------------------------------------------
+
+        theory_prompt = f"""
+Explain ONE topic strictly from the supplied
+uploaded study material.
+
+TOPIC:
+{topic}
+
+MATERIAL:
+{context}
+
+Use ONLY supported information.
+
+Do not add:
+
+- outside knowledge
+- unsupported uses
+- unsupported advantages
+- unsupported examples
+- unsupported syntax
+- unsupported formulas
+- unsupported code
+
+Keep it beginner-friendly.
+
+Write only the theory.
+"""
+
+        theory = self._generate(
+            theory_prompt
+        ).strip()
+
+        theory = self._clean_theory(
+            theory,
+            context,
         )
 
-        if practice_questions:
+        if not theory:
+            theory = (
+                "No sufficient theory was "
+                "found in the uploaded "
+                "study material."
+            )
 
-            practice_text = "\n".join(
+        # ------------------------------------------------------
+        # EXAMPLE
+        # ------------------------------------------------------
+
+        source = (
+            example_context
+            if example_context
+            else context
+        )
+
+        example = self._extract_example(
+            source,
+            topic,
+        )
+
+        if not example:
+            example = (
+                "No example was found in "
+                "the uploaded study material."
+            )
+
+        # ------------------------------------------------------
+        # PRACTICE QUESTIONS
+        # ------------------------------------------------------
+
+        clean_questions = []
+
+        for question in (
+            practice_questions or []
+        ):
+
+            question = re.sub(
+                r"\s+",
+                " ",
+                str(question).strip(),
+            )
+
+            if (
+                question
+                and question
+                not in clean_questions
+            ):
+                clean_questions.append(
+                    question
+                )
+
+        if clean_questions:
+
+            practice = "\n".join(
                 f"{i}. {question}"
-
-                for i, question
-                in enumerate(
-                    practice_questions,
-                    start=1
+                for i, question in enumerate(
+                    clean_questions,
+                    start=1,
                 )
             )
 
         else:
 
-            practice_text = (
-                "No related question-bank questions "
-                "were found."
+            practice = (
+                "No related practice "
+                "questions were found in "
+                "the uploaded question bank."
             )
 
-        prompt = f"""
-You are an academic learning assistant.
+        # ------------------------------------------------------
+        # ASSESSMENT
+        # ------------------------------------------------------
 
-Create a learning progression for:
+        if clean_questions:
 
-{topic}
+            assessment = "\n".join(
+                f"{i}. {question}"
+                for i, question in enumerate(
+                    clean_questions[:3],
+                    start=1,
+                )
+            )
 
-RELEVANT STUDY MATERIAL:
-{context}
+        else:
 
-RELATED QUESTIONS FROM THE UPLOADED QUESTION BANK:
-{practice_text}
+            assessment = (
+                "No separate assessment "
+                "question is available in "
+                "the uploaded question bank."
+            )
 
-STRICT RULES:
+        # ------------------------------------------------------
+        # FINAL
+        # ------------------------------------------------------
 
-- Use only the study material for theory and examples.
-- Use only the supplied question-bank questions for practice.
-- Do not invent practice questions.
-- Do not invent assessment questions.
-- Do not use outside knowledge.
-- Do not invent formulas, facts, examples, or steps.
-- Keep each section concise.
-
-Use exactly this structure:
-
-THEORY
-
-Explain the topic using the relevant study material.
-
-EXAMPLE
-
-Give an example related to the topic from the study material.
-
-If none exists, write:
-
-No example was found in the uploaded study material.
-
-PRACTICE
-
-Show the related question-bank questions exactly as supplied.
-
-If none exist, write:
-
-No related practice questions were found in the uploaded question bank.
-
-ASSESSMENT
-
-Select questions from the supplied question bank that
-can be used for self-assessment.
-
-Do NOT create new questions.
-
-If no separate assessment question is available, write:
-
-No separate assessment question is available in the uploaded question bank.
-"""
-
-        answer = self._generate(
-            prompt
+        answer = "\n\n".join(
+            [
+                "THEORY",
+                theory,
+                "EXAMPLE",
+                example,
+                "PRACTICE",
+                practice,
+                "ASSESSMENT",
+                assessment,
+            ]
         )
 
         self.record_activity(
             topic,
-            "Learning progression"
+            "Learning progression",
         )
 
         return answer
 
-    # ==========================================
-    # 5. EXAM PREP GUIDE
-    # ==========================================
+    # ==========================================================
+    # EXAM PREPARATION
+    # ==========================================================
 
     def exam_prep_guide(
         self,
         topic,
         context,
-        practice_questions=None
+        practice_questions=None,
     ):
-        """
-        Create an exam-preparation guide using only
-        the supplied study material and question bank.
-        """
-
-        context = (
+        context = self._trim_context(
             self._select_relevant_context(
                 topic,
-                context
+                context,
             )
         )
 
-        context = self._trim_context(
-            context
-        )
+        questions = []
 
-        if practice_questions:
+        for question in (
+            practice_questions or []
+        ):
+
+            question = re.sub(
+                r"\s+",
+                " ",
+                str(question).strip(),
+            )
+
+            if (
+                question
+                and question
+                not in questions
+            ):
+                questions.append(
+                    question
+                )
+
+        if questions:
 
             question_text = "\n".join(
                 f"{i}. {question}"
-
-                for i, question
-                in enumerate(
-                    practice_questions,
-                    start=1
+                for i, question in enumerate(
+                    questions,
+                    start=1,
                 )
             )
 
@@ -1631,8 +1766,9 @@ No separate assessment question is available in the uploaded question bank.
         prompt = f"""
 You are an academic exam-preparation assistant.
 
-Topic:
+Use ONLY the supplied material.
 
+TOPIC:
 {topic}
 
 STUDY MATERIAL:
@@ -1641,39 +1777,24 @@ STUDY MATERIAL:
 QUESTION BANK:
 {question_text}
 
-Use ONLY the supplied material.
+STRICT RULES:
+
+- Do not use outside knowledge.
+- Do not invent facts.
+- Do not invent formulas.
+- Do not invent examples.
+- Do not invent steps.
+- Do not invent questions.
+- Use question-bank questions exactly as supplied.
 
 Create:
 
-1. THEORY
-
-A clear explanation of the topic.
-
-2. IMPORTANT POINTS
-
-Only important points supported by the material.
-
-3. EXAMPLE
-
-A relevant example from the study material.
-
-4. PRACTICE
-
-Questions from the supplied question bank.
-
-5. ASSESSMENT
-
-Choose available question-bank questions for self-test.
-
-Do not create new questions.
-
-6. EXAM REVISION
-
-A concise revision summary based only on the material.
-
-Do not use outside knowledge.
-
-Do not invent content.
+THEORY
+IMPORTANT POINTS
+EXAMPLE
+PRACTICE
+ASSESSMENT
+EXAM REVISION
 """
 
         answer = self._generate(
@@ -1682,24 +1803,23 @@ Do not invent content.
 
         self.record_activity(
             topic,
-            "Exam preparation"
+            "Exam preparation",
         )
 
         return answer
 
-    # ==========================================
-    # 6. RECORD ACTIVITY
-    # ==========================================
+    # ==========================================================
+    # HISTORY
+    # ==========================================================
 
     def record_activity(
         self,
         topic,
-        activity
+        activity,
     ):
-
         record = {
             "topic": topic,
-            "activity": activity
+            "activity": activity,
         }
 
         self.history.append(
@@ -1708,10 +1828,5 @@ Do not invent content.
 
         return record
 
-    # ==========================================
-    # 7. GET HISTORY
-    # ==========================================
-
     def get_history(self):
-
         return self.history
