@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import shutil
@@ -28,8 +29,12 @@ rag = RAGEngine()
 learning = LearningTools(model="llama3.2:3b")
 
 
-DATA_FOLDER = "data"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_FOLDER = os.path.join(BASE_DIR, "data")
+STATIC_FOLDER = os.path.join(BASE_DIR, "static")
+CACHE_FOLDER = os.path.join(DATA_FOLDER, ".rag_cache")
 os.makedirs(DATA_FOLDER, exist_ok=True)
+os.makedirs(CACHE_FOLDER, exist_ok=True)
 
 
 SUPPORTED_EXTENSIONS = (
@@ -480,6 +485,25 @@ def extract_matching_questions(
     )
 
 
+def get_documents_manifest():
+    """Return dict of filename -> {mtime, size} to track document modifications."""
+    manifest = {}
+    if not os.path.exists(DATA_FOLDER):
+        return manifest
+    for f in os.listdir(DATA_FOLDER):
+        if f.lower().endswith(SUPPORTED_EXTENSIONS):
+            fp = os.path.join(DATA_FOLDER, f)
+            try:
+                stat = os.stat(fp)
+                manifest[f] = {
+                    "mtime": stat.st_mtime,
+                    "size": stat.st_size,
+                }
+            except OSError:
+                pass
+    return manifest
+
+
 def load_existing_documents():
 
     start_time = time.perf_counter()
@@ -494,15 +518,43 @@ def load_existing_documents():
         "=========================================="
     )
 
+    current_manifest = get_documents_manifest()
+    manifest_file = os.path.join(
+        CACHE_FOLDER,
+        "manifest.json"
+    )
+    cache_valid = False
+
+    if os.path.exists(manifest_file):
+        try:
+            with open(manifest_file, "r", encoding="utf-8") as f:
+                cached_manifest = json.load(f)
+            if cached_manifest == current_manifest:
+                cache_valid = True
+        except Exception:
+            cache_valid = False
+
+    if cache_valid and rag.load_cache(CACHE_FOLDER):
+        print(
+            f"FAISS index & documents loaded from cache in "
+            f"{time.perf_counter() - start_time:.2f}s!"
+        )
+        print(
+            f"Total chunks: {len(rag.documents)}"
+        )
+        print(
+            f"Total vectors: {rag.get_vector_count()}"
+        )
+        print(
+            "=========================================="
+        )
+        return
+
+    print("Cache missing or documents updated. Processing files...")
+
     document_metadata = load_metadata()
 
-    supported_files = [
-        f
-        for f in os.listdir(DATA_FOLDER)
-        if f.lower().endswith(
-            SUPPORTED_EXTENSIONS
-        )
-    ]
+    supported_files = list(current_manifest.keys())
 
     print(
         f"Found {len(supported_files)} supported document(s)."
@@ -604,6 +656,12 @@ def load_existing_documents():
 
     if rag.documents:
         rag._rebuild_index()
+        rag.save_cache(CACHE_FOLDER)
+        try:
+            with open(manifest_file, "w", encoding="utf-8") as f:
+                json.dump(current_manifest, f)
+        except Exception as e:
+            print(f"Warning: Failed to save cache manifest: {e}")
 
     print(
         f"FAISS build time: "
@@ -643,11 +701,33 @@ class TopicRequest(BaseModel):
     chapter: str | None = None
 
 
+class StudyPlanRequest(BaseModel):
+    subject: str
+    chapter: str = "General"
+    topics: list[str] | None = None
+    days: int = 5
+
+
+class ExamPrepRequest(BaseModel):
+    topic: str
+    subject: str | None = None
+    chapter: str | None = None
+
+
+class QuizRequest(BaseModel):
+    topic: str
+    subject: str | None = None
+    chapter: str | None = None
+
+
 @app.get("/")
 def home():
 
     return FileResponse(
-        "static/index.html"
+        os.path.join(
+            STATIC_FOLDER,
+            "index.html",
+        )
     )
 
 
@@ -673,6 +753,7 @@ async def upload_document(
     file: UploadFile = File(...),
     subject: str = Form("General"),
     chapter: str = Form("General"),
+    content_type: str | None = Form(None),
 ):
 
     if not file.filename:
@@ -698,8 +779,10 @@ async def upload_document(
         filename,
     )
 
-    content_type = detect_content_type(
-        filename
+    final_content_type = (
+        content_type.strip()
+        if content_type and content_type.strip()
+        else detect_content_type(filename)
     )
 
     try:
@@ -724,19 +807,30 @@ async def upload_document(
 
             document["metadata"][
                 "content_type"
-            ] = content_type
+            ] = final_content_type
 
         set_document_metadata(
             filename=filename,
             subject=subject,
             chapter=chapter,
-            content_type=content_type,
+            content_type=final_content_type,
         )
 
         rag.add_documents(
             documents,
             rebuild=True,
         )
+
+        rag.save_cache(CACHE_FOLDER)
+        try:
+            with open(
+                os.path.join(CACHE_FOLDER, "manifest.json"),
+                "w",
+                encoding="utf-8",
+            ) as f:
+                json.dump(get_documents_manifest(), f)
+        except Exception:
+            pass
 
         return {
             "message": (
@@ -745,7 +839,7 @@ async def upload_document(
             "filename": filename,
             "subject": subject,
             "chapter": chapter,
-            "content_type": content_type,
+            "content_type": final_content_type,
             "chunks_added": len(documents),
             "total_documents": (
                 rag.get_document_count()
@@ -757,6 +851,116 @@ async def upload_document(
 
     except Exception as e:
 
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        )
+
+
+@app.post("/upload-batch")
+async def upload_documents(
+    files: list[UploadFile] = File(default=[]),
+    subject: str = Form("General"),
+    chapter: str = Form("General"),
+    content_type: str | None = Form(None),
+):
+    valid_files = [f for f in files if f.filename]
+    if not valid_files:
+        raise HTTPException(
+            status_code=400,
+            detail="No files uploaded.",
+        )
+
+    all_new_documents = []
+    processed_files = []
+
+    try:
+        for file in files:
+            if not file.filename:
+                continue
+
+            filename = file.filename
+            if not filename.lower().endswith(SUPPORTED_EXTENSIONS):
+                continue
+
+            file_path = os.path.join(
+                DATA_FOLDER,
+                filename,
+            )
+
+            final_content_type = (
+                content_type.strip()
+                if content_type and content_type.strip()
+                else detect_content_type(filename)
+            )
+
+            with open(
+                file_path,
+                "wb",
+            ) as buffer:
+                shutil.copyfileobj(
+                    file.file,
+                    buffer,
+                )
+
+            documents = process_file(
+                file_path=file_path,
+                subject=subject,
+                chapter=chapter,
+            )
+
+            for document in documents:
+                document["metadata"][
+                    "content_type"
+                ] = final_content_type
+
+            set_document_metadata(
+                filename=filename,
+                subject=subject,
+                chapter=chapter,
+                content_type=final_content_type,
+            )
+
+            all_new_documents.extend(documents)
+            processed_files.append({
+                "filename": filename,
+                "chunks_added": len(documents),
+                "content_type": final_content_type,
+            })
+
+        if not processed_files:
+            raise HTTPException(
+                status_code=400,
+                detail="No valid PDF, DOCX, or PPTX files were found in the upload.",
+            )
+
+        if all_new_documents:
+            rag.add_documents(
+                all_new_documents,
+                rebuild=True,
+            )
+            rag.save_cache(CACHE_FOLDER)
+            try:
+                with open(
+                    os.path.join(CACHE_FOLDER, "manifest.json"),
+                    "w",
+                    encoding="utf-8",
+                ) as f:
+                    json.dump(get_documents_manifest(), f)
+            except Exception:
+                pass
+
+        return {
+            "message": f"Successfully uploaded and indexed {len(processed_files)} document(s).",
+            "files": processed_files,
+            "total_chunks_added": len(all_new_documents),
+            "total_documents": rag.get_document_count(),
+            "total_vectors": rag.get_vector_count(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=str(e),
@@ -1605,6 +1809,195 @@ def progression(
             study_results
             + question_results
         ),
+    }
+
+
+@app.post("/exam-prep")
+def exam_prep(
+    data: ExamPrepRequest,
+):
+    request_start = time.perf_counter()
+    topic = data.topic.strip()
+
+    if not topic:
+        raise HTTPException(
+            status_code=400,
+            detail="Topic cannot be empty.",
+        )
+
+    subject = (
+        data.subject.strip()
+        if data.subject
+        else None
+    )
+    chapter = (
+        data.chapter.strip()
+        if data.chapter
+        else None
+    )
+
+    results = rag.retrieve(
+        topic,
+        k=12,
+        subject=subject,
+        chapter=chapter,
+    )
+
+    study_results = get_study_results(results)
+
+    question_results = rag.get_topic_question_bank_documents(
+        topic=topic,
+        subject=subject,
+        chapter=chapter,
+        limit=10,
+    )
+
+    practice_questions, _ = extract_matching_questions(
+        question_results,
+        topic,
+        limit=10,
+    )
+
+    context = rag.build_context(
+        study_results[:12]
+    )
+
+    example_context = get_example_source_context(
+        study_results,
+        subject=subject,
+        chapter=chapter,
+        max_source_files=2,
+    )
+
+    answer = learning.exam_prep_guide(
+        topic=topic,
+        context=context,
+        practice_questions=practice_questions,
+        example_context=example_context,
+    )
+
+    print(
+        f"Exam prep guide time: "
+        f"{time.perf_counter() - request_start:.2f}s"
+    )
+
+    return {
+        "topic": topic,
+        "subject": subject,
+        "chapter": chapter,
+        "answer": answer,
+        "sources": study_results + question_results,
+    }
+
+
+@app.post("/study-plan")
+def create_study_plan(
+    data: StudyPlanRequest,
+):
+    request_start = time.perf_counter()
+    subject = data.subject.strip()
+    chapter = data.chapter.strip() if data.chapter else "General"
+    days = max(1, min(14, data.days))
+
+    results = rag.retrieve(
+        f"{subject} {chapter} concepts topics syllabus",
+        k=8,
+        subject=subject,
+    )
+    study_results = get_study_results(results)
+    context = rag.build_context(study_results)
+
+    question_results = rag.get_all_question_bank_documents(
+        subject=subject,
+        chapter=chapter,
+    )
+    practice_questions = [
+        r.get("text", "")
+        for r in question_results[:10]
+    ]
+
+    topics = data.topics or rag.get_chapters(subject=subject)
+
+    plan = learning.generate_study_plan(
+        subject=subject,
+        chapter=chapter,
+        topics=topics,
+        days=days,
+        context=context,
+        practice_questions=practice_questions,
+    )
+
+    print(
+        f"Study plan time: "
+        f"{time.perf_counter() - request_start:.2f}s"
+    )
+
+    return {
+        "subject": subject,
+        "chapter": chapter,
+        "days": days,
+        "answer": plan,
+        "sources": study_results,
+    }
+
+
+@app.post("/quiz")
+def generate_topic_quiz(
+    data: QuizRequest,
+):
+    request_start = time.perf_counter()
+    topic = data.topic.strip()
+
+    if not topic:
+        raise HTTPException(
+            status_code=400,
+            detail="Topic cannot be empty.",
+        )
+
+    subject = (
+        data.subject.strip()
+        if data.subject
+        else None
+    )
+    chapter = (
+        data.chapter.strip()
+        if data.chapter
+        else None
+    )
+
+    results = rag.retrieve(
+        topic,
+        k=10,
+        subject=subject,
+        chapter=chapter,
+    )
+
+    study_results = get_study_results(results)
+
+    if not study_results:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No study material found for topic '{topic}' to build a quiz.",
+        )
+
+    context = rag.build_context(study_results)
+
+    quiz = learning.generate_quiz(
+        topic=topic,
+        context=context,
+    )
+
+    print(
+        f"Quiz generation time: "
+        f"{time.perf_counter() - request_start:.2f}s"
+    )
+
+    return {
+        "topic": topic,
+        "subject": subject,
+        "chapter": chapter,
+        "answer": quiz,
+        "sources": study_results,
     }
 
 

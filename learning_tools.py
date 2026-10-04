@@ -1,4 +1,6 @@
+import os
 import re
+import sqlite3
 import time
 
 import ollama
@@ -7,9 +9,38 @@ import ollama
 class LearningTools:
     def __init__(self, model="llama3.2:3b"):
         self.model = model
-        self.history = []
         self.max_context_chars = 7000
         self.max_generation_tokens = 500
+        self.db_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "data",
+            "learning_progress.db",
+        )
+        self._init_db()
+        self.history = self.get_history()
+
+    def _init_db(self):
+        """Initialize SQLite database for persistent learning progress."""
+        try:
+            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS learning_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT NOT NULL,
+                        subject TEXT NOT NULL,
+                        chapter TEXT NOT NULL,
+                        topic TEXT NOT NULL,
+                        activity TEXT NOT NULL,
+                        status TEXT DEFAULT 'Completed'
+                    )
+                    """
+                )
+                conn.commit()
+        except Exception as e:
+            print(f"Warning: Failed to initialize SQLite learning database: {e}")
 
     # ==========================================================
     # CONTEXT HELPERS
@@ -96,6 +127,104 @@ class LearningTools:
             "set": [
                 "set",
                 "sets",
+            ],
+            # Core Algorithms
+            "binary search": [
+                "binary search",
+                "binary-search",
+                "sorted array",
+                "divide and conquer",
+            ],
+            "linear search": [
+                "linear search",
+                "sequential search",
+            ],
+            # DBMS / SQL
+            "normalization": [
+                "normalization",
+                "database normalization",
+                "1nf",
+                "2nf",
+                "3nf",
+                "bcnf",
+                "normal form",
+            ],
+            "acid": [
+                "acid",
+                "acid properties",
+                "atomicity",
+                "consistency",
+                "isolation",
+                "durability",
+            ],
+            "sql": [
+                "sql",
+                "structured query language",
+                "select",
+                "insert",
+                "create table",
+                "join",
+            ],
+            "transaction": [
+                "transaction",
+                "transactions",
+                "concurrency control",
+                "serializability",
+            ],
+            # Operating Systems
+            "process": [
+                "process",
+                "processes",
+                "process management",
+                "pcb",
+                "context switch",
+            ],
+            "deadlock": [
+                "deadlock",
+                "deadlocks",
+                "banker's algorithm",
+                "mutual exclusion",
+                "resource allocation",
+            ],
+            "cpu scheduling": [
+                "cpu scheduling",
+                "scheduling algorithm",
+                "round robin",
+                "fcfs",
+                "sjf",
+                "priority scheduling",
+            ],
+            "paging": [
+                "paging",
+                "page replacement",
+                "virtual memory",
+                "page table",
+                "segmentation",
+            ],
+            # Computer Networks
+            "osi": [
+                "osi",
+                "osi model",
+                "osi layers",
+                "physical layer",
+                "data link",
+                "transport layer",
+            ],
+            "tcp": [
+                "tcp",
+                "tcp/ip",
+                "transmission control protocol",
+                "three-way handshake",
+            ],
+            "udp": [
+                "udp",
+                "user datagram protocol",
+            ],
+            "routing": [
+                "routing",
+                "routing algorithm",
+                "distance vector",
+                "link state",
             ],
         }
 
@@ -686,6 +815,18 @@ class LearningTools:
                 r"\.[A-Za-z_]\w*"
                 r"\s*\("
             ),
+            # C / C++ patterns
+            r"^#include\s*<",
+            r"^(int|void|float|double|char)\s+(main|[A-Za-z_]\w*)\s*\(",
+            r"^(printf|scanf|puts|gets)\s*\(",
+            r"^(std::)?(cout|cin)\s*<<?",
+            r"^\s*[{}]\s*$",
+            # Java patterns
+            r"^(public|private|protected)\s+(static\s+)?(class|void|int|String)\b",
+            r"^System\.(out|err)\.print",
+            # SQL patterns
+            r"^(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE)\b",
+            r"^(FROM|WHERE|GROUP\s+BY|ORDER\s+BY|HAVING|INNER\s+JOIN|LEFT\s+JOIN)\b",
         ]
 
         return any(
@@ -1180,13 +1321,22 @@ print(bfs(graph, 'A'))"""
         )
 
         best_code = candidates[0][1]
+        code_str = "\n".join(best_code)
+
+        # Detect programming language tag
+        if re.search(r"#include\s*<|printf\s*\(|int\s+main\b", code_str, re.IGNORECASE):
+            lang_tag = "C CODE"
+        elif re.search(r"SELECT\s+.+\s+FROM\b|CREATE\s+TABLE\b|INSERT\s+INTO\b", code_str, re.IGNORECASE):
+            lang_tag = "SQL CODE"
+        elif re.search(r"public\s+class\b|System\.out\.println", code_str, re.IGNORECASE):
+            lang_tag = "JAVA CODE"
+        else:
+            lang_tag = "PYTHON CODE"
 
         return (
             "Example 1\n"
-            "PYTHON CODE\n"
-            + "\n".join(
-                best_code
-            )
+            f"{lang_tag}\n"
+            + code_str
         )
 
     # ==========================================================
@@ -1269,6 +1419,124 @@ print(bfs(graph, 'A'))"""
         return theory.strip()
 
     # ==========================================================
+    # ALGORITHM & ARCHITECTURE DIAGRAMS (CS SPECIALIZATION)
+    # ==========================================================
+
+    def _get_algorithm_diagram(self, topic, context):
+        """
+        Grounded lightweight algorithm flow and graph structure diagrams.
+        Outputs Mermaid flowchart / graph representations and state traces.
+        """
+        topic_lower = (topic or "").lower().strip()
+
+        # BFS
+        if any(x in topic_lower for x in ["bfs", "breadth first", "breadth-first"]):
+            return (
+                "### 📊 Algorithm Flow & Graph Visualization\n\n"
+                "```mermaid\n"
+                "graph TD\n"
+                "    A[\"Node A (Start)\"] --> B[\"Node B\"]\n"
+                "    A --> C[\"Node C\"]\n"
+                "    B --> D[\"Node D\"]\n"
+                "    B --> E[\"Node E\"]\n"
+                "    C --> F[\"Node F\"]\n"
+                "    E --> F\n"
+                "```\n\n"
+                "**FIFO Queue State Progression:**\n"
+                "- **Step 1:** Queue: `['A']` ➔ Dequeue **A**, Visit **A**, Enqueue neighbors: `B`, `C`\n"
+                "- **Step 2:** Queue: `['B', 'C']` ➔ Dequeue **B**, Visit **B**, Enqueue neighbors: `D`, `E`\n"
+                "- **Step 3:** Queue: `['C', 'D', 'E']` ➔ Dequeue **C**, Visit **C**, Enqueue neighbor: `F`\n"
+                "- **Step 4:** Queue: `['D', 'E', 'F']` ➔ Dequeue **D**, Visit **D** (leaf)\n"
+                "- **Step 5:** Queue: `['E', 'F']` ➔ Dequeue **E**, Visit **E** (neighbor F already visited)\n"
+                "- **Step 6:** Queue: `['F']` ➔ Dequeue **F**, Visit **F** (leaf)\n"
+                "- **Final Traversal Order:** `A ➔ B ➔ C ➔ D ➔ E ➔ F`"
+            )
+
+        # DFS
+        if any(x in topic_lower for x in ["dfs", "depth first", "depth-first"]):
+            return (
+                "### 📊 Algorithm Flow & Graph Visualization\n\n"
+                "```mermaid\n"
+                "graph TD\n"
+                "    A[\"Node A (Start)\"] --> B[\"Node B\"]\n"
+                "    B --> D[\"Node D\"]\n"
+                "    B --> E[\"Node E\"]\n"
+                "    A --> C[\"Node C\"]\n"
+                "    C --> F[\"Node F\"]\n"
+                "```\n\n"
+                "**LIFO Stack / Recursive Traversal Path:**\n"
+                "- **Step 1:** Push **A** onto stack ➔ Visit **A**\n"
+                "- **Step 2:** Branch deepest to **B** ➔ Push **B** ➔ Visit **B**\n"
+                "- **Step 3:** Branch deepest to **D** ➔ Push **D** ➔ Visit **D** (leaf, backtrack to **B**)\n"
+                "- **Step 4:** Branch to **E** ➔ Push **E** ➔ Visit **E** (leaf, backtrack to **A**)\n"
+                "- **Step 5:** Branch to unvisited neighbor **C** ➔ Push **C** ➔ Visit **C**\n"
+                "- **Step 6:** Branch deepest to **F** ➔ Push **F** ➔ Visit **F**\n"
+                "- **Traversal Order:** `A ➔ B ➔ D ➔ E ➔ C ➔ F`"
+            )
+
+        # Binary Search
+        if "binary search" in topic_lower:
+            return (
+                "### 📊 Algorithm Flow & Search Pipeline\n\n"
+                "```mermaid\n"
+                "flowchart LR\n"
+                "    Start([\"Sorted Array [L..R]\"]) --> Mid[\"Mid = (L + R) // 2\"]\n"
+                "    Mid --> Check{\"target == arr[mid]?\"}\n"
+                "    Check -- \"Yes\" --> Found([\"Return Index mid\"])\n"
+                "    Check -- \"< arr[mid]\" --> Left[\"Search Left: R = mid - 1\"]\n"
+                "    Check -- \"> arr[mid]\" --> Right[\"Search Right: L = mid + 1\"]\n"
+                "    Left --> Mid\n"
+                "    Right --> Mid\n"
+                "```\n\n"
+                "**Complexity:** Time: `O(log N)` | Space: `O(1)`"
+            )
+
+        # DBMS Normalization
+        if any(x in topic_lower for x in ["normalization", "normal form"]):
+            return (
+                "### 📊 Database Normalization Hierarchy\n\n"
+                "```mermaid\n"
+                "flowchart TD\n"
+                "    UNF[\"Unnormalized Form (Repeating Groups)\"] -->|Atomic attributes| NF1[\"1NF (First Normal Form)\"]\n"
+                "    NF1 -->|Remove Partial Dependencies| NF2[\"2NF (Second Normal Form)\"]\n"
+                "    NF2 -->|Remove Transitive Dependencies| NF3[\"3NF (Third Normal Form)\"]\n"
+                "    NF3 -->|Every determinant is a superkey| BCNF[\"BCNF (Boyce-Codd Normal Form)\"]\n"
+                "```"
+            )
+
+        # OSI Model
+        if "osi" in topic_lower:
+            return (
+                "### 📊 OSI Reference Architecture Flow\n\n"
+                "```mermaid\n"
+                "flowchart TD\n"
+                "    L7[\"7. Application Layer (HTTP, DNS, SMTP)\"] --> L6[\"6. Presentation Layer (SSL/TLS, Compression)\"]\n"
+                "    L6 --> L5[\"5. Session Layer (Sockets, RPC)\"]\n"
+                "    L5 --> L4[\"4. Transport Layer (TCP, UDP, Port Addressing)\"]\n"
+                "    L4 --> L3[\"3. Network Layer (IP, Routing, Routers)\"]\n"
+                "    L3 --> L2[\"2. Data Link Layer (Frames, MAC, Ethernet, Switches)\"]\n"
+                "    L2 --> L1[\"1. Physical Layer (Bits, Cables, Voltage)\"]\n"
+                "```"
+            )
+
+        # OS Process Lifecycle
+        if any(x in topic_lower for x in ["process state", "process lifecycle", "process management"]):
+            return (
+                "### 📊 OS Process State Transitions\n\n"
+                "```mermaid\n"
+                "flowchart LR\n"
+                "    New([\"New\"]) -->|Admitted| Ready[\"Ready\"]\n"
+                "    Ready -->|Scheduler Dispatch| Running[\"Running\"]\n"
+                "    Running -->|Interrupt / Timeout| Ready\n"
+                "    Running -->|I/O or Event Wait| Waiting[\"Waiting / Blocked\"]\n"
+                "    Waiting -->|I/O Completion| Ready\n"
+                "    Running -->|Exit| Terminated([\"Terminated\"])\n"
+                "```"
+            )
+
+        return None
+
+    # ==========================================================
     # EXPLAIN TOPIC
     # ==========================================================
 
@@ -1347,6 +1615,19 @@ No example was found in the uploaded study material.
                 "Example",
                 "Example",
                 example,
+            )
+
+        diagram = self._get_algorithm_diagram(
+            topic,
+            context,
+        )
+
+        if diagram:
+
+            answer = self._insert_before_conclusion(
+                answer,
+                "Algorithm Flow & Diagram",
+                diagram,
             )
 
         self.record_activity(
@@ -1688,17 +1969,33 @@ Write only the theory.
         # FINAL
         # ------------------------------------------------------
 
+        progression_parts = [
+            "THEORY",
+            theory,
+            "EXAMPLE",
+            example,
+        ]
+
+        diagram = self._get_algorithm_diagram(
+            topic,
+            context,
+        )
+
+        if diagram:
+            progression_parts.extend([
+                "DIAGRAM & FLOW",
+                diagram,
+            ])
+
+        progression_parts.extend([
+            "PRACTICE",
+            practice,
+            "ASSESSMENT",
+            assessment,
+        ])
+
         answer = "\n\n".join(
-            [
-                "THEORY",
-                theory,
-                "EXAMPLE",
-                example,
-                "PRACTICE",
-                practice,
-                "ASSESSMENT",
-                assessment,
-            ]
+            progression_parts
         )
 
         self.record_activity(
@@ -1717,8 +2014,9 @@ Write only the theory.
         topic,
         context,
         practice_questions=None,
+        example_context=None,
     ):
-        context = self._trim_context(
+        context_trimmed = self._trim_context(
             self._select_relevant_context(
                 topic,
                 context,
@@ -1772,7 +2070,7 @@ TOPIC:
 {topic}
 
 STUDY MATERIAL:
-{context}
+{context_trimmed}
 
 QUESTION BANK:
 {question_text}
@@ -1801,32 +2099,190 @@ EXAM REVISION
             prompt
         )
 
+        source = (
+            example_context
+            if example_context
+            else context
+        )
+
+        example = self._extract_example(
+            source,
+            topic,
+        )
+
+        if example:
+            answer = self._replace_section(
+                answer,
+                ["EXAMPLE", "Example"],
+                "EXAMPLE",
+                example,
+            )
+
         self.record_activity(
             topic,
-            "Exam preparation",
+            "Exam preparation guide",
         )
 
         return answer
 
     # ==========================================================
-    # HISTORY
+    # STUDY PLAN GENERATOR (WEEK 5-6 DOMAIN SPECIALIZATION)
+    # ==========================================================
+
+    def generate_study_plan(
+        self,
+        subject,
+        chapter,
+        topics=None,
+        days=5,
+        context="",
+        practice_questions=None,
+    ):
+        topic_list_str = (
+            ", ".join(topics)
+            if isinstance(topics, list) and topics
+            else (subject or "General")
+        )
+
+        q_count = len(practice_questions) if practice_questions else 0
+        context_excerpt = self._trim_context(context)[:2000] if context else ""
+
+        prompt = f"""
+You are an expert university academic advisor.
+Create a structured {days}-Day Revision & Exam Study Plan.
+
+SUBJECT: {subject}
+CHAPTER / MODULE: {chapter}
+TOPICS: {topic_list_str}
+AVAILABLE PRACTICE QUESTIONS: {q_count}
+
+SYLLABUS & CONTEXT EXCERPT:
+{context_excerpt}
+
+STRICT INSTRUCTIONS:
+- Break the study load into {days} distinct, manageable study sessions (Day 1 through Day {days}).
+- For each day, include:
+  * Core Concept Focus
+  * Reading & Theory Objectives
+  * Specific Hands-on / Code / Problem Practice
+  * Self-check Questions
+- Include a concluding 'High-Yield Exam Strategy & Weak-Area Tips' section.
+- Keep the guidance practical and syllabus-focused.
+"""
+
+        plan = self._generate(prompt)
+
+        self.record_activity(
+            f"{subject} - {chapter}",
+            f"{days}-Day study plan",
+        )
+
+        return plan
+
+    # ==========================================================
+    # SELF-ASSESSMENT QUIZ (WEAK AREA IDENTIFICATION)
+    # ==========================================================
+
+    def generate_quiz(
+        self,
+        topic,
+        context,
+    ):
+        context_trimmed = self._trim_context(
+            self._select_relevant_context(
+                topic,
+                context,
+            )
+        )
+
+        prompt = f"""
+You are an academic assessment assistant.
+Create a diagnostic self-assessment quiz on: '{topic}'.
+Use ONLY the provided study material.
+
+STUDY MATERIAL:
+{context_trimmed}
+
+Format the quiz with:
+1. Multiple Choice Questions (2 questions with options A, B, C, D)
+2. Conceptual / Definition Question (1 question)
+3. Application or Code / Algorithm Problem (1 question)
+4. Comprehensive Answer Key with Explanations (placed at the end to evaluate understanding and identify weak areas)
+
+Ensure all questions strictly test concepts from the provided study material.
+"""
+
+        quiz = self._generate(prompt)
+
+        self.record_activity(
+            topic,
+            "Self-assessment quiz",
+        )
+
+        return quiz
+
+    # ==========================================================
+    # HISTORY & TRACKING
     # ==========================================================
 
     def record_activity(
         self,
         topic,
         activity,
+        subject="General",
+        chapter="General",
+        status="Completed",
     ):
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         record = {
-            "topic": topic,
+            "timestamp": timestamp,
+            "subject": subject or "General",
+            "chapter": chapter or "General",
+            "topic": topic or "General",
             "activity": activity,
+            "status": status,
         }
 
-        self.history.append(
-            record
-        )
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO learning_history (timestamp, subject, chapter, topic, activity, status)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record["timestamp"],
+                        record["subject"],
+                        record["chapter"],
+                        record["topic"],
+                        record["activity"],
+                        record["status"],
+                    ),
+                )
+                conn.commit()
+                record["id"] = cursor.lastrowid
+        except Exception as e:
+            print(f"Warning: Failed to persist activity to SQLite: {e}")
 
+        self.history.append(record)
         return record
 
     def get_history(self):
-        return self.history
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT id, timestamp, subject, chapter, topic, activity, status
+                    FROM learning_history
+                    ORDER BY id ASC
+                    """
+                )
+                rows = cursor.fetchall()
+                self.history = [dict(row) for row in rows]
+                return self.history
+        except Exception as e:
+            print(f"Warning: Failed to read from SQLite history: {e}")
+            return self.history

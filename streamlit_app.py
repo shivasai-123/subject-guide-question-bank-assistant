@@ -127,8 +127,26 @@ def get_subjects():
     )
 
 
+def natural_chapter_sort_key(chapter_name):
+    """Sort key for natural/numeric chapter ordering."""
+    clean_name = str(chapter_name).strip()
+    if clean_name.lower() == "general":
+        return (2, [])
+
+    tokens = []
+    for part in re.split(r"(\d+)", clean_name):
+        if not part:
+            continue
+        if part.isdigit():
+            tokens.append((0, int(part), ""))
+        else:
+            tokens.append((1, 0, part.lower()))
+
+    return (0, tokens)
+
+
 def get_chapters(subject=None):
-    """Get available chapters."""
+    """Get available chapters in natural numerical order."""
 
     params = {}
 
@@ -143,9 +161,14 @@ def get_chapters(subject=None):
     if not data:
         return []
 
-    return data.get(
+    chapters = data.get(
         "chapters",
         [],
+    )
+
+    return sorted(
+        chapters,
+        key=natural_chapter_sort_key,
     )
 
 
@@ -209,19 +232,18 @@ def display_sources(sources):
         seen.add(key)
 
         with st.expander(
-            f"📄 {filename}"
+            f"📄 {filename} [{content_type}] - {subject} ({chapter})"
         ):
             st.write(
-                f"**Subject:** {subject}"
+                f"**Subject:** {subject} | **Chapter:** {chapter} | **Type:** {content_type}"
             )
-
-            st.write(
-                f"**Chapter:** {chapter}"
-            )
-
-            st.write(
-                f"**Type:** {content_type}"
-            )
+            text_snippet = source.get("text", "").strip()
+            if text_snippet:
+                st.caption("Retrieved Source Excerpt:")
+                st.code(
+                    text_snippet[:400] + ("..." if len(text_snippet) > 400 else ""),
+                    language="text",
+                )
 
 
 # ==========================================================
@@ -379,44 +401,47 @@ def display_answer(answer):
             "",
         ).strip()
 
-        # Look for Python code.
-        python_marker = re.search(
-            r"PYTHON\s+CODE",
+        # Look for multi-language code marker: PYTHON CODE, C CODE, SQL CODE, JAVA CODE
+        code_marker = re.search(
+            r"(PYTHON|C|CPP|C\+\+|JAVA|SQL)\s+CODE",
             example_text,
             flags=re.IGNORECASE,
         )
 
-        if python_marker:
+        if code_marker:
 
-            # Everything after PYTHON CODE is treated as code
-            # until the example section ends.
-            code_text = example_text[
-                python_marker.end():
-            ].strip()
-
-            code_text = format_bfs_code(
-                code_text
-            )
+            detected_tag = code_marker.group(1).upper()
+            lang_map = {
+                "PYTHON": "python",
+                "C": "c",
+                "CPP": "cpp",
+                "C++": "cpp",
+                "JAVA": "java",
+                "SQL": "sql",
+            }
+            code_lang = lang_map.get(detected_tag, "python")
+            code_text = example_text[code_marker.end():].strip()
+            if code_lang == "python":
+                code_text = format_bfs_code(code_text)
 
             st.code(
                 code_text,
-                language="python",
+                language=code_lang,
             )
 
         else:
 
-            # Check whether the example contains a Python
-            # fenced block.
-            python_block = re.search(
-                r"```python\s*(.*?)```",
+            # Check whether the example contains a fenced code block
+            fenced_block = re.search(
+                r"```(python|c|cpp|java|sql)?\s*(.*?)```",
                 example_text,
                 flags=re.IGNORECASE | re.DOTALL,
             )
 
-            if python_block:
+            if fenced_block:
 
                 explanation_before = (
-                    example_text[:python_block.start()]
+                    example_text[:fenced_block.start()]
                     .strip()
                 )
 
@@ -425,15 +450,18 @@ def display_answer(answer):
                         explanation_before
                     )
 
-                code_text = python_block.group(1).strip()
+                fenced_lang = (fenced_block.group(1) or "python").lower()
+                code_text = fenced_block.group(2).strip()
+                if fenced_lang == "python":
+                    code_text = format_bfs_code(code_text)
 
                 st.code(
                     code_text,
-                    language="python",
+                    language=fenced_lang,
                 )
 
                 explanation_after = (
-                    example_text[python_block.end():]
+                    example_text[fenced_block.end():]
                     .strip()
                 )
 
@@ -444,8 +472,6 @@ def display_answer(answer):
 
             else:
 
-                # If there is no recognizable code,
-                # display the example normally.
                 st.markdown(
                     example_text
                 )
@@ -467,6 +493,31 @@ def display_answer(answer):
         # If the response doesn't use the expected structure,
         # simply render it normally.
         st.markdown(answer)
+
+    # ------------------------------------------------------
+    # Export / Download Actions (Track A Requirement)
+    # ------------------------------------------------------
+    st.divider()
+    clean_id = abs(hash(answer)) % 10000000
+    col_dl1, col_dl2 = st.columns([1, 1])
+    with col_dl1:
+        st.download_button(
+            label="📥 Export Guide (.md)",
+            data=answer,
+            file_name="academic_guide.md",
+            mime="text/markdown",
+            key=f"dl_md_{clean_id}",
+            use_container_width=True,
+        )
+    with col_dl2:
+        st.download_button(
+            label="📄 Export Guide (.txt)",
+            data=answer,
+            file_name="academic_guide.txt",
+            mime="text/plain",
+            key=f"dl_txt_{clean_id}",
+            use_container_width=True,
+        )
 
 
 # ==========================================================
@@ -490,6 +541,7 @@ page = st.sidebar.radio(
         "💬 Ask Question",
         "🧠 Learn a Topic",
         "📝 Question Bank",
+        "🎯 Exam Prep & Planner",
         "📄 Documents",
         "⬆️ Upload Document",
         "📜 Learning History",
@@ -520,12 +572,19 @@ if page == "🏠 Dashboard":
     st.divider()
 
     health = api_get("/health")
+    doc_data = api_get("/documents")
+    docs_list = doc_data.get("documents", []) if doc_data else []
+
+    notes_count = sum(1 for d in docs_list if d.get("content_type", "").lower() == "notes")
+    qb_count = sum(1 for d in docs_list if "question" in d.get("content_type", "").lower())
+    tb_count = sum(1 for d in docs_list if "textbook" in d.get("content_type", "").lower())
+    lab_count = sum(1 for d in docs_list if "lab" in d.get("content_type", "").lower())
 
     if health:
 
         documents = health.get(
             "documents",
-            0,
+            len(docs_list),
         )
 
         vectors = health.get(
@@ -540,39 +599,50 @@ if page == "🏠 Dashboard":
 
         model = health.get(
             "model",
-            "Unknown",
+            "llama3.2:3b",
         )
 
         col1, col2, col3, col4 = st.columns(4)
 
         with col1:
             st.metric(
-                "📄 Documents",
+                "📄 Total Documents",
                 documents,
             )
 
         with col2:
             st.metric(
-                "🔢 Vectors",
+                "🔢 Vector Embeddings",
                 vectors,
             )
 
         with col3:
             st.metric(
-                "📚 Subjects",
+                "📚 Registered Subjects",
                 len(subjects),
             )
 
         with col4:
             st.metric(
-                "🤖 Model",
+                "🤖 Local LLM",
                 model,
             )
+
+        st.markdown("#### 📊 Academic Content Distribution")
+        col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+        with col_c1:
+            st.metric("📝 Study Notes", notes_count)
+        with col_c2:
+            st.metric("❓ Question Banks", qb_count)
+        with col_c3:
+            st.metric("📖 Textbooks", tb_count)
+        with col_c4:
+            st.metric("🔬 Lab Manuals", lab_count)
 
     st.divider()
 
     st.subheader(
-        "📖 Available Subjects"
+        "📖 Available Subjects & Modules"
     )
 
     subjects = get_subjects()
@@ -586,9 +656,11 @@ if page == "🏠 Dashboard":
         for i, subject in enumerate(subjects):
 
             with cols[i % len(cols)]:
-                st.info(
-                    f"📘 **{subject}**"
-                )
+                subject_chapters = get_chapters(subject)
+                with st.expander(f"📘 **{subject}**", expanded=False):
+                    st.caption(f"Modules / Chapters: {len(subject_chapters)}")
+                    for ch in subject_chapters:
+                        st.markdown(f"- {ch}")
 
     else:
 
@@ -599,46 +671,26 @@ if page == "🏠 Dashboard":
     st.divider()
 
     st.subheader(
-        "🚀 What can you do?"
+        "🚀 Quick Actions"
     )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-
-        st.markdown(
-            """
-            ### 💬 Ask Questions
-
-            Ask questions from your uploaded
-            study materials.
-            """
-        )
+        st.markdown("### 💬 Ask Questions")
+        st.write("Targeted answers using verified multi-source course material.")
 
     with col2:
-
-        st.markdown(
-            """
-            ### 🧠 Learn Topics
-
-            Follow the:
-
-            **Theory → Example → Practice → Assessment**
-
-            learning flow.
-            """
-        )
+        st.markdown("### 🧠 Learn a Topic")
+        st.write("Structured: Theory → Code Example → Practice → Assessment.")
 
     with col3:
+        st.markdown("### 📝 Question Bank")
+        st.write("Browse and filter syllabus questions by subject & chapter.")
 
-        st.markdown(
-            """
-            ### 📝 Prepare for Exams
-
-            Explore questions from your
-            uploaded question banks.
-            """
-        )
+    with col4:
+        st.markdown("### 🎯 Exam Prep & Planner")
+        st.write("Generate high-yield revision summaries, multi-day plans & quizzes.")
 
 
 # ==========================================================
@@ -1012,6 +1064,278 @@ elif page == "📝 Question Bank":
 
 
 # ==========================================================
+# EXAM PREP & STUDY PLANNER (WEEK 5-6 DOMAIN SPECIALIZATION)
+# ==========================================================
+
+elif page == "🎯 Exam Prep & Planner":
+
+    st.title(
+        "🎯 Exam Preparation & Study Planner"
+    )
+
+    st.write(
+        "Comprehensive exam readiness combining syllabus notes, textbooks, and previous year question papers."
+    )
+
+    subjects = get_subjects()
+
+    subject_options = [
+        "All Subjects"
+    ] + subjects
+
+    selected_subject = st.selectbox(
+        "📚 Subject",
+        subject_options,
+        key="exam_subject",
+    )
+
+    subject = (
+        None
+        if selected_subject == "All Subjects"
+        else selected_subject
+    )
+
+    chapters = get_chapters(
+        subject
+    )
+
+    chapter_options = [
+        "All Chapters"
+    ] + chapters
+
+    selected_chapter = st.selectbox(
+        "📖 Chapter / Module",
+        chapter_options,
+        key="exam_chapter",
+    )
+
+    chapter = (
+        None
+        if selected_chapter == "All Chapters"
+        else selected_chapter
+    )
+
+    tab_guide, tab_plan, tab_quiz = st.tabs(
+        [
+            "📝 High-Yield Exam Guide",
+            "📅 Revision Study Plan",
+            "🧠 Self-Assessment Diagnostic Quiz",
+        ]
+    )
+
+    # ------------------------------------------------------
+    # TAB 1: HIGH-YIELD EXAM GUIDE
+    # ------------------------------------------------------
+    with tab_guide:
+
+        st.subheader(
+            "High-Yield Exam Topic Guide"
+        )
+        st.write(
+            "Combines theory, extracted code examples, and practice questions from the question bank."
+        )
+
+        exam_topic = st.text_input(
+            "Exam Topic",
+            placeholder="Example: Breadth First Search or Normalization",
+            key="exam_topic_input",
+        )
+
+        if st.button(
+            "🚀 Generate Exam Guide",
+            type="primary",
+            use_container_width=True,
+            key="btn_exam_guide",
+        ):
+
+            if not exam_topic.strip():
+
+                st.warning(
+                    "Please enter an exam topic."
+                )
+
+            else:
+
+                with st.spinner(
+                    "Compiling exam preparation guide..."
+                ):
+
+                    result = api_post(
+                        "/exam-prep",
+                        {
+                            "topic": exam_topic,
+                            "subject": subject,
+                            "chapter": chapter,
+                        },
+                        timeout=240,
+                    )
+
+                if result:
+
+                    display_answer(
+                        result.get(
+                            "answer",
+                            "",
+                        )
+                    )
+
+                    display_sources(
+                        result.get(
+                            "sources",
+                            [],
+                        )
+                    )
+
+    # ------------------------------------------------------
+    # TAB 2: MULTI-DAY REVISION STUDY PLAN
+    # ------------------------------------------------------
+    with tab_plan:
+
+        st.subheader(
+            "Custom Multi-Day Revision Plan"
+        )
+        st.write(
+            "Structured day-by-day objectives, practice tasks, and self-checks based on syllabus & question banks."
+        )
+
+        plan_subj = (
+            selected_subject
+            if selected_subject != "All Subjects"
+            else (subjects[0] if subjects else "General")
+        )
+        plan_chap = (
+            selected_chapter
+            if selected_chapter != "All Chapters"
+            else "General"
+        )
+
+        days = st.slider(
+            "Days until Examination",
+            min_value=3,
+            max_value=14,
+            value=5,
+            step=1,
+            help="Select the number of study days to divide your revision into.",
+        )
+
+        if st.button(
+            "📅 Generate Revision Plan",
+            type="primary",
+            use_container_width=True,
+            key="btn_study_plan",
+        ):
+
+            with st.spinner(
+                f"Generating {days}-day study plan for {plan_subj}..."
+            ):
+
+                result = api_post(
+                    "/study-plan",
+                    {
+                        "subject": plan_subj,
+                        "chapter": plan_chap,
+                        "days": days,
+                    },
+                    timeout=180,
+                )
+
+            if result:
+
+                plan_text = result.get(
+                    "answer",
+                    "",
+                )
+
+                st.markdown(
+                    plan_text
+                )
+
+                st.divider()
+
+                clean_id = abs(hash(plan_text)) % 10000000
+
+                st.download_button(
+                    label="📥 Export Revision Plan (.md)",
+                    data=plan_text,
+                    file_name=f"revision_plan_{plan_subj}_{days}days.md",
+                    mime="text/markdown",
+                    key=f"dl_plan_{clean_id}",
+                    use_container_width=True,
+                )
+
+    # ------------------------------------------------------
+    # TAB 3: SELF-ASSESSMENT DIAGNOSTIC QUIZ
+    # ------------------------------------------------------
+    with tab_quiz:
+
+        st.subheader(
+            "Self-Assessment Diagnostic Quiz"
+        )
+        st.write(
+            "Identify weak areas and test your comprehension on any topic using course-material questions."
+        )
+
+        quiz_topic = st.text_input(
+            "Topic for Diagnostic Quiz",
+            placeholder="Example: Tuple Packing or BFS",
+            key="quiz_topic_input",
+        )
+
+        if st.button(
+            "📝 Start Diagnostic Quiz",
+            type="primary",
+            use_container_width=True,
+            key="btn_quiz",
+        ):
+
+            if not quiz_topic.strip():
+
+                st.warning(
+                    "Please enter a topic to test."
+                )
+
+            else:
+
+                with st.spinner(
+                    "Generating diagnostic quiz from study materials..."
+                ):
+
+                    result = api_post(
+                        "/quiz",
+                        {
+                            "topic": quiz_topic,
+                            "subject": subject,
+                            "chapter": chapter,
+                        },
+                        timeout=180,
+                    )
+
+                if result:
+
+                    quiz_text = result.get(
+                        "answer",
+                        "",
+                    )
+
+                    st.markdown(
+                        quiz_text
+                    )
+
+                    st.divider()
+
+                    clean_id = abs(hash(quiz_text)) % 10000000
+
+                    st.download_button(
+                        label="📥 Export Diagnostic Quiz (.md)",
+                        data=quiz_text,
+                        file_name=f"diagnostic_quiz_{quiz_topic}.md",
+                        mime="text/markdown",
+                        key=f"dl_quiz_{clean_id}",
+                        use_container_width=True,
+                    )
+
+
+# ==========================================================
 # DOCUMENTS
 # ==========================================================
 
@@ -1145,13 +1469,15 @@ elif page == "⬆️ Upload Document":
         "Upload PDF, DOCX, or PPTX study material."
     )
 
-    uploaded_file = st.file_uploader(
-        "Choose a document",
+    uploaded_files = st.file_uploader(
+        "Choose document(s)",
         type=[
             "pdf",
             "docx",
             "pptx",
         ],
+        accept_multiple_files=True,
+        help="Select one or multiple PDF, DOCX, or PPTX files to upload.",
     )
 
     subjects = get_subjects()
@@ -1183,51 +1509,77 @@ elif page == "⬆️ Upload Document":
         placeholder="Example: Unit 3",
     )
 
-    if uploaded_file:
+    content_type_choice = st.selectbox(
+        "🏷️ Content Type Classification",
+        [
+            "Auto Detect",
+            "Notes",
+            "Question Bank",
+            "Textbook",
+            "Lab Manual",
+        ],
+        help="Classify the document type to optimize how the assistant processes theory vs exam questions.",
+    )
+
+    content_type = (
+        ""
+        if content_type_choice == "Auto Detect"
+        else content_type_choice
+    )
+
+    if uploaded_files:
 
         st.info(
-            f"Selected: **{uploaded_file.name}** "
-            f"({format_bytes(uploaded_file.size)})"
+            f"📁 **{len(uploaded_files)} file(s) selected:**\n"
+            + "\n".join(
+                f"- `{f.name}` ({format_bytes(f.size)})"
+                for f in uploaded_files
+            )
         )
 
     upload_button = st.button(
-        "⬆️ Upload Document",
+        "⬆️ Upload & Process Documents",
         type="primary",
         use_container_width=True,
     )
 
     if upload_button:
 
-        if not uploaded_file:
+        if not uploaded_files:
 
             st.warning(
-                "Please choose a document first."
+                "Please choose at least one document first."
             )
 
         else:
 
             with st.spinner(
-                "📄 Processing document and building embeddings..."
+                f"📄 Processing {len(uploaded_files)} document(s) and updating vector embeddings..."
             ):
 
-                files = {
-                    "file": (
-                        uploaded_file.name,
-                        uploaded_file.getvalue(),
-                        uploaded_file.type,
+                files_payload = [
+                    (
+                        "files",
+                        (
+                            f.name,
+                            f.getvalue(),
+                            f.type or "application/octet-stream",
+                        ),
                     )
-                }
+                    for f in uploaded_files
+                ]
 
                 try:
 
                     response = requests.post(
-                        f"{API_URL}/upload",
-                        params={
+                        f"{API_URL}/upload-batch",
+                        data={
                             "subject": subject,
                             "chapter": chapter,
+                            "content_type": content_type,
                         },
-                        files=files,
-                        timeout=300,
+                        files=files_payload,
+                        timeout=360,
                     )
 
                     response.raise_for_status()
@@ -1279,7 +1631,7 @@ elif page == "⬆️ Upload Document":
                 st.success(
                     result.get(
                         "message",
-                        "Document uploaded successfully.",
+                        "Document(s) uploaded successfully.",
                     )
                 )
 
@@ -1290,8 +1642,8 @@ elif page == "⬆️ Upload Document":
                     st.metric(
                         "Chunks Added",
                         result.get(
-                            "chunks_added",
-                            0,
+                            "total_chunks_added",
+                            result.get("chunks_added", 0),
                         ),
                     )
 
@@ -1316,24 +1668,17 @@ elif page == "⬆️ Upload Document":
                     )
 
                 st.write(
-                    f"**File:** "
-                    f"{result.get('filename', '')}"
+                    f"**Subject:** {subject} | **Chapter:** {chapter} | **Content Type:** {content_type or 'Auto Detect'}"
                 )
 
-                st.write(
-                    f"**Subject:** "
-                    f"{result.get('subject', '')}"
-                )
-
-                st.write(
-                    f"**Chapter:** "
-                    f"{result.get('chapter', '')}"
-                )
-
-                st.write(
-                    f"**Content Type:** "
-                    f"{result.get('content_type', '')}"
-                )
+                if "files" in result and isinstance(result["files"], list):
+                    with st.expander("📄 Processed File Details", expanded=True):
+                        for f_info in result["files"]:
+                            st.write(
+                                f"- **{f_info.get('filename')}**: "
+                                f"{f_info.get('chunks_added', 0)} chunks, "
+                                f"Type: `{f_info.get('content_type', 'Notes')}`"
+                            )
 
 
 # ==========================================================

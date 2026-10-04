@@ -1,0 +1,42 @@
+{
+    "PYTHON.pdf": {
+        "subject": "Python",
+        "chapter": "General",
+        "content_type": "Notes"
+    },
+    "c_programming_basics.pdf": {
+        "subject": "C-Programming",
+        "chapter": "General",
+        "content_type": "Notes"
+    },
+    "Python Question Bank.pdf": {
+        "subject": "Python",
+        "chapter": "General",
+        "content_type": "Question Bank"
+    },
+    "2919.pdf": {
+        "subject": "General",
+        "chapter": "General",
+        "content_type": "Notes"
+    },
+    "DM UNIT3.pptx": {
+        "subject": "DM",
+        "chapter": "UNIT 3",
+        "content_type": "Notes"
+    },
+    "seminar9.pdf": {
+        "subject": "General",
+        "chapter": "General",
+        "content_type": "Notes"
+    },
+    "UNIT 1 DATA MINING NOTES (1) (1).docx": {
+        "subject": "General",
+        "chapter": "General",
+        "content_type": "Notes"
+    },
+    "BFS_Study_Material.pdf": {
+        "subject": "Python",
+        "chapter": "General",
+        "content_type": "Notes"
+    }
+}

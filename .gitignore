@@ -1,10 +1,25 @@
+# Virtual Environments
 .venv/
+env/
+venv/
+ENV/
+
+# Environment Variables
 .env
+.env.local
+
+# Python Cache
 __pycache__/
-*.pyc
-data/uploads/
-data/processed/
-.venv/
-__pycache__/
-*.pyc
-data/
+*.py[cod]
+*$py.class
+*.so
+
+# RAG Index Cache
+data/.rag_cache/
+
+# User Uploaded Artifacts & Scratch
+*.log
+*.db
+*.sqlite3
+.system_generated/
+scratch/

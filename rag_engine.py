@@ -1,3 +1,5 @@
+import os
+import json
 import re
 
 import faiss
@@ -460,6 +462,118 @@ class RAGEngine:
                 "apriori",
                 "apriori algorithm",
             ],
+
+            # Core Algorithms
+            "binary search": [
+                "binary search",
+                "binary-search",
+                "sorted array",
+                "divide and conquer",
+            ],
+
+            "linear search": [
+                "linear search",
+                "sequential search",
+            ],
+
+            # DBMS / SQL
+            "normalization": [
+                "normalization",
+                "database normalization",
+                "1nf",
+                "2nf",
+                "3nf",
+                "bcnf",
+                "normal form",
+            ],
+
+            "acid": [
+                "acid",
+                "acid properties",
+                "atomicity",
+                "consistency",
+                "isolation",
+                "durability",
+            ],
+
+            "sql": [
+                "sql",
+                "structured query language",
+                "select",
+                "insert",
+                "create table",
+                "join",
+            ],
+
+            "transaction": [
+                "transaction",
+                "transactions",
+                "concurrency control",
+                "serializability",
+            ],
+
+            # Operating Systems
+            "process": [
+                "process",
+                "processes",
+                "process management",
+                "pcb",
+                "context switch",
+            ],
+
+            "deadlock": [
+                "deadlock",
+                "deadlocks",
+                "banker's algorithm",
+                "mutual exclusion",
+                "resource allocation",
+            ],
+
+            "cpu scheduling": [
+                "cpu scheduling",
+                "scheduling algorithm",
+                "round robin",
+                "fcfs",
+                "sjf",
+                "priority scheduling",
+            ],
+
+            "paging": [
+                "paging",
+                "page replacement",
+                "virtual memory",
+                "page table",
+                "segmentation",
+            ],
+
+            # Computer Networks
+            "osi": [
+                "osi",
+                "osi model",
+                "osi layers",
+                "physical layer",
+                "data link",
+                "transport layer",
+            ],
+
+            "tcp": [
+                "tcp",
+                "tcp/ip",
+                "transmission control protocol",
+                "three-way handshake",
+            ],
+
+            "udp": [
+                "udp",
+                "user datagram protocol",
+            ],
+
+            "routing": [
+                "routing",
+                "routing algorithm",
+                "distance vector",
+                "link state",
+            ],
         }
 
         phrases = []
@@ -713,6 +827,22 @@ class RAGEngine:
             "tower of hanoi",
 
             "alpha beta",
+
+            "binary search",
+
+            "linear search",
+
+            "normalization",
+
+            "acid",
+
+            "deadlock",
+
+            "cpu scheduling",
+
+            "osi",
+
+            "tcp",
         ]
 
         # Prefer the longest exact topic phrase.
@@ -1702,6 +1832,23 @@ class RAGEngine:
     # 19. CHAPTERS
     # =========================================================
 
+    @staticmethod
+    def _chapter_sort_key(chapter_name):
+        clean_name = str(chapter_name).strip()
+        if clean_name.lower() == "general":
+            return (2, [])
+
+        tokens = []
+        for part in re.split(r"(\d+)", clean_name):
+            if not part:
+                continue
+            if part.isdigit():
+                tokens.append((0, int(part), ""))
+            else:
+                tokens.append((1, 0, part.lower()))
+
+        return (0, tokens)
+
     def get_chapters(
         self,
         subject=None,
@@ -1733,5 +1880,48 @@ class RAGEngine:
 
         return sorted(
             chapters,
-            key=lambda item: item.lower(),
+            key=self._chapter_sort_key,
         )
+
+    # =========================================================
+    # 20. INDEX PERSISTENCE & CACHING
+    # =========================================================
+
+    def save_cache(self, cache_dir):
+        """Save FAISS index, embeddings, and documents to cache directory."""
+        if self.index is None or not self.documents:
+            return False
+        os.makedirs(cache_dir, exist_ok=True)
+        index_file = os.path.join(cache_dir, "faiss.index")
+        embeddings_file = os.path.join(cache_dir, "embeddings.npy")
+        docs_file = os.path.join(cache_dir, "documents.json")
+        try:
+            faiss.write_index(self.index, index_file)
+            if self.embeddings is not None:
+                np.save(embeddings_file, self.embeddings)
+            with open(docs_file, "w", encoding="utf-8") as f:
+                json.dump(self.documents, f, ensure_ascii=False)
+            print(f"RAG cache successfully saved to {cache_dir}")
+            return True
+        except Exception as e:
+            print(f"Warning: Failed to save RAG cache: {e}")
+            return False
+
+    def load_cache(self, cache_dir):
+        """Load FAISS index, embeddings, and documents from cache directory."""
+        index_file = os.path.join(cache_dir, "faiss.index")
+        embeddings_file = os.path.join(cache_dir, "embeddings.npy")
+        docs_file = os.path.join(cache_dir, "documents.json")
+        if not (os.path.exists(index_file) and os.path.exists(docs_file)):
+            return False
+        try:
+            self.index = faiss.read_index(index_file)
+            if os.path.exists(embeddings_file):
+                self.embeddings = np.load(embeddings_file)
+            with open(docs_file, "r", encoding="utf-8") as f:
+                self.documents = json.load(f)
+            print(f"Loaded RAG cache: {len(self.documents)} chunks, {self.index.ntotal} vectors.")
+            return True
+        except Exception as e:
+            print(f"Warning: Failed to load RAG cache: {e}")
+            return False
