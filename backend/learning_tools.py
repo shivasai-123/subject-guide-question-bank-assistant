@@ -11,11 +11,10 @@ class LearningTools:
         self.model = model
         self.max_context_chars = 7000
         self.max_generation_tokens = 500
-        self.db_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "data",
-            "learning_progress.db",
-        )
+        backend_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(backend_dir)
+        default_db = os.path.join(project_root, "data", "learning_progress.db")
+        self.db_path = os.getenv("DB_PATH", default_db)
         self._init_db()
         self.history = self.get_history()
 

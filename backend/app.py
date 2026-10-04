@@ -2,7 +2,12 @@ import json
 import os
 import re
 import shutil
+import sys
 import time
+
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+if BACKEND_DIR not in sys.path:
+    sys.path.insert(0, BACKEND_DIR)
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import FileResponse, StreamingResponse
@@ -29,10 +34,21 @@ rag = RAGEngine()
 learning = LearningTools(model="llama3.2:3b")
 
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_FOLDER = os.path.join(BASE_DIR, "data")
-STATIC_FOLDER = os.path.join(BASE_DIR, "static")
-CACHE_FOLDER = os.path.join(DATA_FOLDER, ".rag_cache")
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
+
+DATA_FOLDER = os.getenv(
+    "DATA_FOLDER",
+    os.path.join(PROJECT_ROOT, "data"),
+)
+STATIC_FOLDER = os.getenv(
+    "STATIC_FOLDER",
+    os.path.join(PROJECT_ROOT, "static"),
+)
+CACHE_FOLDER = os.getenv(
+    "CACHE_FOLDER",
+    os.path.join(DATA_FOLDER, ".rag_cache"),
+)
 os.makedirs(DATA_FOLDER, exist_ok=True)
 os.makedirs(CACHE_FOLDER, exist_ok=True)
 

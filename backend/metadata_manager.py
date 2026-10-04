@@ -6,8 +6,12 @@ import os
 # METADATA STORAGE
 # ==========================================
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_FOLDER = os.path.join(BASE_DIR, "data")
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
+DATA_FOLDER = os.getenv(
+    "DATA_FOLDER",
+    os.path.join(PROJECT_ROOT, "data")
+)
 
 METADATA_FILE = os.path.join(
     DATA_FOLDER,
