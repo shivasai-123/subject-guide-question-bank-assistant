@@ -5,7 +5,10 @@ import time
 
 from google import genai
 from google.genai import errors, types
-import ollama
+try:
+    import ollama
+except ImportError:
+    ollama = None
 
 
 class LearningTools:
@@ -2286,4 +2289,4 @@ Ensure all questions strictly test concepts from the provided study material.
                 return self.history
         except Exception as e:
             print(f"Warning: Failed to read from SQLite history: {e}")
-            return self.history
+            return self.history
