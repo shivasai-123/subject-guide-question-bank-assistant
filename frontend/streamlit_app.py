@@ -25,6 +25,21 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Hide Streamlit Deploy Button
+st.markdown(
+    """
+    <style>
+    .stAppDeployButton {
+        display: none !important;
+    }
+    button[data-testid="stAppDeployButton"] {
+        display: none !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 # ==========================================================
 # HELPER FUNCTIONS
@@ -113,6 +128,7 @@ def api_post(endpoint, data=None, files=None, timeout=180):
         return None
 
 
+@st.cache_data(ttl=15)
 def get_subjects():
     """Get available subjects."""
 
@@ -145,6 +161,7 @@ def natural_chapter_sort_key(chapter_name):
     return (0, tokens)
 
 
+@st.cache_data(ttl=15)
 def get_chapters(subject=None):
     """Get available chapters in natural numerical order."""
 
@@ -546,12 +563,6 @@ page = st.sidebar.radio(
         "⬆️ Upload Document",
         "📜 Learning History",
     ],
-)
-
-st.sidebar.divider()
-
-st.sidebar.caption(
-    f"Backend: {API_URL}"
 )
 
 
@@ -1628,6 +1639,8 @@ elif page == "⬆️ Upload Document":
 
             if result:
 
+                st.cache_data.clear()
+
                 st.success(
                     result.get(
                         "message",
@@ -1742,18 +1755,3 @@ elif page == "📜 Learning History":
                     else:
 
                         st.write(item)
-
-
-# ==========================================================
-# FOOTER
-# ==========================================================
-
-st.sidebar.divider()
-
-st.sidebar.caption(
-    "Subject Guide & Question Bank AI Assistant"
-)
-
-st.sidebar.caption(
-    "Built with FastAPI + FAISS + Sentence Transformers + Ollama + Streamlit"
-)

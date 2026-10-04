@@ -1,11 +1,26 @@
 import os
 import json
 import re
+import time
 
 import faiss
 import numpy as np
 
 from sentence_transformers import SentenceTransformer
+
+_SHARED_EMBEDDING_MODELS = {}
+
+
+def get_shared_embedding_model(
+    model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+) -> SentenceTransformer:
+    """Load and cache the sentence-transformers model once in memory."""
+    if model_name not in _SHARED_EMBEDDING_MODELS:
+        print(f"Loading embedding model: {model_name}")
+        _SHARED_EMBEDDING_MODELS[model_name] = SentenceTransformer(
+            model_name
+        )
+    return _SHARED_EMBEDDING_MODELS[model_name]
 
 
 class RAGEngine:
@@ -21,13 +36,7 @@ class RAGEngine:
         print("==========================================")
 
         self.embedding_model_name = embedding_model
-
-        print(
-            f"Loading embedding model: "
-            f"{embedding_model}"
-        )
-
-        self.model = SentenceTransformer(
+        self.model = get_shared_embedding_model(
             embedding_model
         )
 
@@ -35,8 +44,17 @@ class RAGEngine:
         self.embeddings = None
         self.index = None
 
+        get_dim_fn = getattr(
+            self.model,
+            "get_embedding_dimension",
+            getattr(
+                self.model,
+                "get_sentence_embedding_dimension",
+                None,
+            ),
+        )
         self.embedding_dimension = (
-            self.model.get_sentence_embedding_dimension()
+            get_dim_fn() if get_dim_fn else 384
         )
 
         print(
@@ -1105,6 +1123,7 @@ class RAGEngine:
         # Query embedding
         # -----------------------------------------------------
 
+        t_embed_start = time.perf_counter()
         query_embedding = (
             self.model.encode(
                 [query],
@@ -1113,35 +1132,44 @@ class RAGEngine:
             )
             .astype("float32")
         )
+        t_embed = time.perf_counter() - t_embed_start
 
         # -----------------------------------------------------
-        # Temporary FAISS search over filtered documents
+        # FAISS search over candidate documents
         # -----------------------------------------------------
 
-        candidate_vectors = (
-            self.embeddings[
-                candidate_indices
-            ]
-        )
+        t_search_start = time.perf_counter()
 
-        temp_index = faiss.IndexFlatL2(
-            self.embedding_dimension
-        )
+        if (
+            len(candidate_indices) == len(self.documents)
+            and self.index is not None
+        ):
+            search_index = self.index
+        else:
+            candidate_vectors = (
+                self.embeddings[
+                    candidate_indices
+                ]
+            )
 
-        temp_index.add(
-            candidate_vectors
-        )
+            search_index = faiss.IndexFlatL2(
+                self.embedding_dimension
+            )
+
+            search_index.add(
+                candidate_vectors
+            )
 
         search_k = min(
             max(
-                k * 5,
-                20,
+                k * 4,
+                15,
             ),
             len(candidate_indices),
         )
 
         distances, local_indices = (
-            temp_index.search(
+            search_index.search(
                 query_embedding,
                 search_k,
             )
@@ -1446,6 +1474,13 @@ class RAGEngine:
             results.append(
                 result
             )
+
+        t_search = time.perf_counter() - t_search_start
+        print(
+            f"[PERF] Query embedding: {t_embed:.3f}s | "
+            f"FAISS search + scoring: {t_search:.3f}s "
+            f"(returned {len(results)} chunks)"
+        )
 
         return results
 
@@ -1924,4 +1959,4 @@ class RAGEngine:
             return True
         except Exception as e:
             print(f"Warning: Failed to load RAG cache: {e}")
-            return False
+            return False

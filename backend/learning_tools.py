@@ -3,6 +3,8 @@ import re
 import sqlite3
 import time
 
+from google import genai
+from google.genai import errors, types
 import ollama
 
 

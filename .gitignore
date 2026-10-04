@@ -23,3 +23,12 @@ data/.rag_cache/
 *.sqlite3
 .system_generated/
 scratch/
+
+
+# Private study materials - DO NOT COMMIT
+data/*.pdf
+data/*.pptx
+data/*.docx
+
+# Generated RAG cache
+data/.rag_cache/

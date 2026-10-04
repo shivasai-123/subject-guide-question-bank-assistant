@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import json
 import os
 import re
@@ -30,9 +31,33 @@ app = FastAPI(
 )
 
 
-rag = RAGEngine()
-learning = LearningTools(model="llama3.2:3b")
+class ResponseCache:
+    """In-memory LRU query cache to eliminate repeated generation latency."""
+    def __init__(self, maxsize=128):
+        self.cache = OrderedDict()
+        self.maxsize = maxsize
 
+    def get(self, key):
+        if key in self.cache:
+            self.cache.move_to_end(key)
+            return self.cache[key]
+        return None
+
+    def set(self, key, value):
+        if key in self.cache:
+            self.cache.move_to_end(key)
+        self.cache[key] = value
+        if len(self.cache) > self.maxsize:
+            self.cache.popitem(last=False)
+
+    def clear(self):
+        self.cache.clear()
+
+
+response_cache = ResponseCache()
+
+rag = RAGEngine()
+learning = LearningTools()
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
@@ -848,6 +873,8 @@ async def upload_document(
         except Exception:
             pass
 
+        response_cache.clear()
+
         return {
             "message": (
                 "Document uploaded successfully"
@@ -966,6 +993,8 @@ async def upload_documents(
             except Exception:
                 pass
 
+            response_cache.clear()
+
         return {
             "message": f"Successfully uploaded and indexed {len(processed_files)} document(s).",
             "files": processed_files,
@@ -1014,6 +1043,13 @@ def ask_question(
     )
 
     query_lower = query.lower()
+
+    cache_key = ("ask", query_lower, subject, chapter)
+    cached_resp = response_cache.get(cache_key)
+    if cached_resp is not None:
+        elapsed = time.perf_counter() - request_start
+        print(f"[PERF] /ask cache hit: {elapsed:.3f}s for query '{query}'")
+        return cached_resp
 
     learning_query = any(
         phrase in query_lower
@@ -1279,14 +1315,14 @@ def ask_question(
 
         results = rag.retrieve(
             topic,
-            k=12,
+            k=4,
             subject=subject,
             chapter=chapter,
         )
 
         example_results = rag.retrieve(
             f"{topic} Python code example implementation",
-            k=15,
+            k=4,
             subject=subject,
             chapter=chapter,
         )
@@ -1390,7 +1426,7 @@ def ask_question(
             }
 
         context = rag.build_context(
-            study_results[:12]
+            study_results[:4]
         )
 
         # ======================================================
@@ -1420,12 +1456,13 @@ def ask_question(
             example_context=example_context,
         )
 
+        total_elapsed = time.perf_counter() - request_start
         print(
-            f"Learning progression time: "
-            f"{time.perf_counter() - request_start:.2f}s"
+            f"[PERF] Learning progression total time: "
+            f"{total_elapsed:.2f}s"
         )
 
-        return {
+        resp_dict = {
             "topic": topic,
             "subject": subject,
             "chapter": chapter,
@@ -1435,14 +1472,17 @@ def ask_question(
                 + question_results
             ),
         }
+        response_cache.set(cache_key, resp_dict)
+        return resp_dict
 
     # ==========================================================
     # NORMAL RAG QUESTION
     # ==========================================================
 
+    t_ret0 = time.perf_counter()
     results = rag.retrieve(
         query,
-        k=12,
+        k=4,
         subject=subject,
         chapter=chapter,
     )
@@ -1450,6 +1490,7 @@ def ask_question(
     study_results = get_study_results(
         results
     )
+    t_ret = time.perf_counter() - t_ret0
 
     if not study_results:
 
@@ -1464,8 +1505,9 @@ def ask_question(
             "sources": [],
         }
 
+    t_ctx0 = time.perf_counter()
     context = rag.build_context(
-        study_results[:12]
+        study_results[:4]
     )
 
     example_context = (
@@ -1476,25 +1518,32 @@ def ask_question(
             max_source_files=2,
         )
     )
+    t_ctx = time.perf_counter() - t_ctx0
 
+    t_gen0 = time.perf_counter()
     answer = learning.solve_question(
         query,
         context,
         example_context=example_context,
     )
+    t_gen = time.perf_counter() - t_gen0
+    t_total = time.perf_counter() - request_start
 
-    print(
-        f"Total /ask time: "
-        f"{time.perf_counter() - request_start:.2f}s"
-    )
+    print(f"[PERF] Query: '{query}'")
+    print(f"[PERF] Retrieval: {t_ret:.3f}s (retrieved {len(study_results)} study chunks)")
+    print(f"[PERF] Context build: {t_ctx:.3f}s (context chars: {len(context)})")
+    print(f"[PERF] LLM Generation: {t_gen:.2f}s")
+    print(f"[PERF] Total /ask time: {t_total:.2f}s")
 
-    return {
+    resp_dict = {
         "question": query,
         "subject": subject,
         "chapter": chapter,
         "answer": answer,
         "sources": study_results,
     }
+    response_cache.set(cache_key, resp_dict)
+    return resp_dict
 
 
 @app.post("/explain")
@@ -1523,9 +1572,17 @@ def explain_topic(
         else None
     )
 
+    req_start = time.perf_counter()
+    cache_key = ("explain", topic.lower(), subject, chapter)
+    cached_resp = response_cache.get(cache_key)
+    if cached_resp is not None:
+        elapsed = time.perf_counter() - req_start
+        print(f"[PERF] /explain cache hit: {elapsed:.3f}s for topic '{topic}'")
+        return cached_resp
+
     results = rag.retrieve(
         topic,
-        k=8,
+        k=4,
         subject=subject,
         chapter=chapter,
     )
@@ -1548,7 +1605,7 @@ def explain_topic(
         }
 
     context = rag.build_context(
-        results
+        results[:4]
     )
 
     answer = learning.explain_topic(
@@ -1556,13 +1613,18 @@ def explain_topic(
         context,
     )
 
-    return {
+    total_elapsed = time.perf_counter() - req_start
+    print(f"[PERF] /explain total time: {total_elapsed:.2f}s for topic '{topic}'")
+
+    resp_dict = {
         "topic": topic,
         "subject": subject,
         "chapter": chapter,
         "answer": answer,
         "sources": results,
     }
+    response_cache.set(cache_key, resp_dict)
+    return resp_dict
 
 
 @app.post("/synthesize")
@@ -1591,9 +1653,17 @@ def synthesize_content(
         else None
     )
 
+    req_start = time.perf_counter()
+    cache_key = ("synthesize", topic.lower(), subject, chapter)
+    cached_resp = response_cache.get(cache_key)
+    if cached_resp is not None:
+        elapsed = time.perf_counter() - req_start
+        print(f"[PERF] /synthesize cache hit: {elapsed:.3f}s for topic '{topic}'")
+        return cached_resp
+
     results = rag.retrieve(
         topic,
-        k=8,
+        k=4,
         subject=subject,
         chapter=chapter,
     )
@@ -1616,7 +1686,7 @@ def synthesize_content(
         }
 
     context = rag.build_context(
-        results
+        results[:4]
     )
 
     answer = learning.synthesize_content(
@@ -1624,13 +1694,18 @@ def synthesize_content(
         context,
     )
 
-    return {
+    total_elapsed = time.perf_counter() - req_start
+    print(f"[PERF] /synthesize total time: {total_elapsed:.2f}s for topic '{topic}'")
+
+    resp_dict = {
         "topic": topic,
         "subject": subject,
         "chapter": chapter,
         "answer": answer,
         "sources": results,
     }
+    response_cache.set(cache_key, resp_dict)
+    return resp_dict
 
 
 @app.post("/progression")
@@ -1663,16 +1738,23 @@ def progression(
         else None
     )
 
+    cache_key = ("progression", topic.lower(), subject, chapter)
+    cached_resp = response_cache.get(cache_key)
+    if cached_resp is not None:
+        elapsed = time.perf_counter() - request_start
+        print(f"[PERF] /progression cache hit: {elapsed:.3f}s for topic '{topic}'")
+        return cached_resp
+
     results = rag.retrieve(
         topic,
-        k=12,
+        k=4,
         subject=subject,
         chapter=chapter,
     )
 
     example_results = rag.retrieve(
         f"{topic} Python code example implementation",
-        k=15,
+        k=4,
         subject=subject,
         chapter=chapter,
     )
@@ -1775,7 +1857,7 @@ def progression(
         }
 
     context = rag.build_context(
-        study_results[:12]
+        study_results[:4]
     )
 
     # ==========================================================
@@ -1811,12 +1893,13 @@ def progression(
         example_context=example_context,
     )
 
+    total_elapsed = time.perf_counter() - request_start
     print(
-        f"Learning progression time: "
-        f"{time.perf_counter() - request_start:.2f}s"
+        f"[PERF] /progression total time: "
+        f"{total_elapsed:.2f}s for topic '{topic}'"
     )
 
-    return {
+    resp_dict = {
         "topic": topic,
         "subject": subject,
         "chapter": chapter,
@@ -1826,6 +1909,8 @@ def progression(
             + question_results
         ),
     }
+    response_cache.set(cache_key, resp_dict)
+    return resp_dict
 
 
 @app.post("/exam-prep")
@@ -1854,7 +1939,7 @@ def exam_prep(
 
     results = rag.retrieve(
         topic,
-        k=12,
+        k=4,
         subject=subject,
         chapter=chapter,
     )
@@ -1875,7 +1960,7 @@ def exam_prep(
     )
 
     context = rag.build_context(
-        study_results[:12]
+        study_results[:4]
     )
 
     example_context = get_example_source_context(
@@ -1893,7 +1978,7 @@ def exam_prep(
     )
 
     print(
-        f"Exam prep guide time: "
+        f"[PERF] Exam prep guide time: "
         f"{time.perf_counter() - request_start:.2f}s"
     )
 
@@ -1917,11 +2002,11 @@ def create_study_plan(
 
     results = rag.retrieve(
         f"{subject} {chapter} concepts topics syllabus",
-        k=8,
+        k=4,
         subject=subject,
     )
     study_results = get_study_results(results)
-    context = rag.build_context(study_results)
+    context = rag.build_context(study_results[:4])
 
     question_results = rag.get_all_question_bank_documents(
         subject=subject,
@@ -1983,7 +2068,7 @@ def generate_topic_quiz(
 
     results = rag.retrieve(
         topic,
-        k=10,
+        k=4,
         subject=subject,
         chapter=chapter,
     )
@@ -1996,7 +2081,7 @@ def generate_topic_quiz(
             detail=f"No study material found for topic '{topic}' to build a quiz.",
         )
 
-    context = rag.build_context(study_results)
+    context = rag.build_context(study_results[:4])
 
     quiz = learning.generate_quiz(
         topic=topic,
@@ -2004,7 +2089,7 @@ def generate_topic_quiz(
     )
 
     print(
-        f"Quiz generation time: "
+        f"[PERF] Quiz generation time: "
         f"{time.perf_counter() - request_start:.2f}s"
     )
 
